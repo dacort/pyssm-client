@@ -42,9 +42,9 @@ class SessionManagerPlugin:
             # Register session plugins
             await self._register_session_plugins()
 
-            # Start session
+            # Create session without auto-executing
             self._current_session = (
-                await self._session_handler.validate_input_and_start_session(
+                await self._session_handler.validate_input_and_create_session(
                     {
                         "sessionId": args.session_id,
                         "streamUrl": args.stream_url,
@@ -58,8 +58,11 @@ class SessionManagerPlugin:
                 )
             )
 
-            # Set up data channel for session
+            # Set up data channel for session BEFORE executing
             self._current_session.set_data_channel(data_channel)
+            
+            # Now execute the session with data channel properly set
+            await self._current_session.execute()
 
             # Set up signal handlers for graceful shutdown
             self._setup_signal_handlers()

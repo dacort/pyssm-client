@@ -63,6 +63,41 @@ class SessionHandler:
             self._logger.error(f"Failed to start session: {e}")
             raise RuntimeError(f"Session startup failed: {e}") from e
 
+    async def validate_input_and_create_session(
+        self, cli_args: Dict[str, Any]
+    ) -> ISession:
+        """Validate CLI input and create a new session without executing it.
+
+        Args:
+            cli_args: CLI arguments dictionary
+
+        Returns:
+            Created session instance (not yet executed)
+
+        Raises:
+            SessionValidationError: If validation fails
+            RuntimeError: If session creation fails
+        """
+        try:
+            # Extract and validate required parameters
+            config = self._extract_session_config(cli_args)
+            client_config = self._extract_client_config(cli_args)
+
+            # Create session using registry
+            session = await self._registry.create_session(config, client_config)
+
+            # Track active session
+            self._active_sessions[config.session_id] = session
+
+            self._logger.info(f"Session {config.session_id} created successfully")
+            return session
+
+        except (ValueError, KeyError) as e:
+            raise SessionValidationError(f"Validation failed: {e}") from e
+        except Exception as e:
+            self._logger.error(f"Failed to create session: {e}")
+            raise RuntimeError(f"Session creation failed: {e}") from e
+
     def _extract_session_config(self, cli_args: Dict[str, Any]) -> SessionConfig:
         """Extract session configuration from CLI arguments.
 
