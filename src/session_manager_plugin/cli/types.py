@@ -40,9 +40,9 @@ class ConnectArguments:
     def from_dict(cls, data: Dict[str, Any]) -> ConnectArguments:
         """Create ConnectArguments from dictionary (typically from AWS CLI)."""
         return cls(
-            session_id=data.get("sessionId", ""),
-            stream_url=data.get("streamUrl", ""),
-            token_value=data.get("tokenValue", ""),
+            session_id=data.get("SessionId") or data.get("sessionId", ""),
+            stream_url=data.get("StreamUrl") or data.get("streamUrl", ""),
+            token_value=data.get("TokenValue") or data.get("tokenValue", ""),
             target=data.get("target"),
             document_name=data.get("documentName"),
             session_type=data.get("sessionType", "Standard_Stream"),

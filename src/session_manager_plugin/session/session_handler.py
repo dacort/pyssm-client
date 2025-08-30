@@ -111,14 +111,19 @@ class SessionHandler:
             KeyError: If required fields are missing
             ValueError: If field values are invalid
         """
-        required_fields = ["sessionId", "streamUrl", "tokenValue"]
+        # Check for required fields in both PascalCase (AWS output) and camelCase (fallback)
+        session_id = cli_args.get("SessionId") or cli_args.get("sessionId")
+        stream_url = cli_args.get("StreamUrl") or cli_args.get("streamUrl")
+        token_value = cli_args.get("TokenValue") or cli_args.get("tokenValue")
 
-        for field in required_fields:
-            if field not in cli_args or not cli_args[field]:
-                raise KeyError(f"Missing or empty required field: {field}")
+        if not session_id:
+            raise KeyError("Missing or empty required field: SessionId/sessionId")
+        if not stream_url:
+            raise KeyError("Missing or empty required field: StreamUrl/streamUrl")
+        if not token_value:
+            raise KeyError("Missing or empty required field: TokenValue/tokenValue")
 
         # Validate URL format
-        stream_url = cli_args["streamUrl"]
         if not self._is_valid_websocket_url(stream_url):
             raise ValueError(
                 "streamUrl must be a valid WebSocket URL (ws:// or wss://)"
@@ -126,9 +131,9 @@ class SessionHandler:
 
         # Create configuration (validation happens in SessionConfig.__post_init__)
         return SessionConfig(
-            session_id=cli_args["sessionId"],
+            session_id=session_id,
             stream_url=stream_url,
-            token_value=cli_args["tokenValue"],
+            token_value=token_value,
             target=cli_args.get("target"),
             document_name=cli_args.get("documentName"),
             parameters=cli_args.get("parameters", {}),
