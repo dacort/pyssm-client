@@ -340,7 +340,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.34.0" },
     { name = "click", specifier = ">=8.1.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
-    { name = "websockets", specifier = ">=12.0" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [package.metadata.requires-dev]

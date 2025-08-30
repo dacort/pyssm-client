@@ -64,7 +64,7 @@ class TestWebSocketChannelCore:
         """Test connection failure is handled gracefully."""
         channel = WebSocketChannel(sample_config)
 
-        with patch("websockets.connect", side_effect=Exception("Connection failed")):
+        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=Exception("Connection failed")):
             success = await channel.connect()
 
             assert success is False

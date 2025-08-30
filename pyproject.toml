@@ -6,7 +6,7 @@ authors = [
     {name = "Damon Cortesi", email = "dacort@amazon.com"},
 ]
 dependencies = [
-    "websockets>=12.0",
+    "websockets>=15.0.1",
     "boto3>=1.34.0",
     "click>=8.1.0",
     "pydantic>=2.5.0",

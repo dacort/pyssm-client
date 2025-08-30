@@ -2,15 +2,25 @@
 
 ## Overview
 
-This phase integrates the session management and WebSocket communication components, creating a complete CLI interface that mirrors the Go implementation's functionality for AWS Session Manager Plugin.
+This phase integrates the session management and WebSocket communication components, creating a complete CLI interface. Due to the complexity, this is split into two sub-phases:
 
-## Objectives
+**Phase 4A**: Core CLI structure with `connect` command (direct session parameters)
+**Phase 4B**: `ssh` command with AWS SSM integration (user-friendly target-based sessions)
 
-- Create command-line interface matching AWS CLI integration patterns
-- Implement argument parsing and validation for session parameters
+## Phase 4A Objectives
+
+- Create Click-based CLI with subcommand structure
+- Implement `connect` command for direct session parameters (AWS CLI integration)
 - Integrate session and communicator components seamlessly  
 - Add comprehensive logging and error reporting
 - Create data channel management with proper session type handling
+
+## Phase 4B Objectives (Follow-up)
+
+- Add `ssh` command with AWS SSM API integration
+- Implement target-based session creation using `ssm.start_session()`
+- Add AWS credential discovery and configuration
+- Provide SSM document defaults for common session types
 
 ## Key Integration Points
 
@@ -21,7 +31,7 @@ Based on the Go implementation analysis:
 - Session type-specific handler configuration
 - Error handling and cleanup on termination
 
-## Implementation Steps
+## Phase 4A Implementation Steps
 
 ### 1. CLI Argument Structure and Parsing
 
@@ -36,8 +46,8 @@ import json
 
 
 @dataclass
-class CLIArguments:
-    """Structured CLI arguments for session manager plugin."""
+class ConnectArguments:
+    """CLI arguments for connect command (direct session parameters)."""
     
     # Required session parameters
     session_id: str
@@ -123,7 +133,7 @@ class CLIArguments:
         return errors
 ```
 
-### 2. Main CLI Interface
+### 2. Main CLI Interface with Subcommands
 
 #### src/session_manager_plugin/cli.py
 ```python
@@ -139,7 +149,7 @@ from pathlib import Path
 
 import click
 
-from .cli.types import CLIArguments
+from .cli.types import ConnectArguments
 from .session.session_handler import SessionHandler
 from .session.types import SessionConfig, ClientConfig, SessionType
 from .communicator.data_channel import SessionDataChannel
@@ -156,7 +166,7 @@ class SessionManagerPlugin:
         self._current_session: Optional[Any] = None
         self._shutdown_event = asyncio.Event()
     
-    async def run_session(self, args: CLIArguments) -> int:
+    async def run_session(self, args: ConnectArguments) -> int:
         """Run a session with the provided arguments."""
         try:
             # Validate arguments
@@ -210,7 +220,7 @@ class SessionManagerPlugin:
         finally:
             await self._cleanup()
     
-    def _create_session_config(self, args: CLIArguments) -> SessionConfig:
+    def _create_session_config(self, args: ConnectArguments) -> SessionConfig:
         """Create session configuration from CLI arguments."""
         return SessionConfig(
             session_id=args.session_id,
@@ -221,7 +231,7 @@ class SessionManagerPlugin:
             parameters=args.get_parameters_dict()
         )
     
-    def _create_client_config(self, args: CLIArguments) -> ClientConfig:
+    def _create_client_config(self, args: ConnectArguments) -> ClientConfig:
         """Create client configuration from CLI arguments."""
         try:
             session_type = SessionType(args.session_type)
@@ -233,7 +243,7 @@ class SessionManagerPlugin:
             session_type=session_type
         )
     
-    async def _create_data_channel(self, args: CLIArguments) -> SessionDataChannel:
+    async def _create_data_channel(self, args: ConnectArguments) -> SessionDataChannel:
         """Create and configure data channel."""
         websocket_config = create_websocket_config(
             stream_url=args.stream_url,
@@ -250,7 +260,7 @@ class SessionManagerPlugin:
     async def _configure_data_channel_handlers(
         self, 
         data_channel: SessionDataChannel, 
-        args: CLIArguments
+        args: ConnectArguments
     ) -> None:
         """Configure data channel input/output handlers based on session type."""
         session_type = args.session_type
@@ -358,8 +368,23 @@ class SessionManagerPlugin:
         self.logger.info("Cleanup completed")
 
 
-# Click CLI interface
-@click.command()
+# Click CLI interface with subcommands
+@click.group()
+@click.option('--verbose', '-v', is_flag=True, help='Verbose logging')
+@click.option('--log-file', help='Log file path')
+@click.pass_context
+def cli(ctx, verbose: bool, log_file: Optional[str]) -> None:
+    """AWS Session Manager Plugin - Python implementation."""
+    ctx.ensure_object(dict)
+    ctx.obj['verbose'] = verbose
+    ctx.obj['log_file'] = log_file
+    
+    # Set up logging
+    log_level = logging.DEBUG if verbose else logging.INFO
+    setup_logging(level=log_level, log_file=log_file)
+
+
+@cli.command()
 @click.argument('json_input', required=False)
 @click.option('--session-id', help='Session ID')
 @click.option('--stream-url', help='WebSocket stream URL')
@@ -372,13 +397,12 @@ class SessionManagerPlugin:
 @click.option('--profile', help='AWS profile')
 @click.option('--region', help='AWS region')
 @click.option('--endpoint-url', help='AWS endpoint URL')
-@click.option('--verbose', '-v', is_flag=True, help='Verbose logging')
-@click.option('--log-file', help='Log file path')
-def main(json_input: Optional[str], **kwargs) -> None:
+@click.pass_context
+def connect(ctx, json_input: Optional[str], **kwargs) -> None:
     """
-    AWS Session Manager Plugin - Python implementation.
+    Connect to existing session with direct parameters.
     
-    This plugin is typically called by the AWS CLI with JSON input containing
+    This command is typically called by the AWS CLI with JSON input containing
     session parameters. It can also be called directly with individual options.
     """
     try:
@@ -387,7 +411,7 @@ def main(json_input: Optional[str], **kwargs) -> None:
             # Parse JSON input (typical AWS CLI usage)
             try:
                 json_data = json.loads(json_input)
-                args = CLIArguments.from_dict(json_data)
+                args = ConnectArguments.from_dict(json_data)
             except json.JSONDecodeError as e:
                 click.echo(f"Error parsing JSON input: {e}", err=True)
                 sys.exit(1)
@@ -395,11 +419,7 @@ def main(json_input: Optional[str], **kwargs) -> None:
             # Use individual options
             # Filter out None values
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
-            args = CLIArguments.from_dict(filtered_kwargs)
-        
-        # Set up logging
-        log_level = logging.DEBUG if args.verbose else logging.INFO
-        setup_logging(level=log_level, log_file=args.log_file)
+            args = ConnectArguments.from_dict(filtered_kwargs)
         
         # Run the session
         plugin = SessionManagerPlugin()
@@ -409,6 +429,12 @@ def main(json_input: Optional[str], **kwargs) -> None:
     except Exception as e:
         click.echo(f"Fatal error: {e}", err=True)
         sys.exit(1)
+
+
+def main() -> int:
+    """Main entry point."""
+    cli()
+    return 0
 
 
 if __name__ == '__main__':
@@ -576,7 +602,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from session_manager_plugin.cli.types import CLIArguments
+from session_manager_plugin.cli.types import ConnectArguments
 from session_manager_plugin.cli import SessionManagerPlugin
 from session_manager_plugin.session.types import SessionConfig, ClientConfig, SessionType
 
@@ -585,9 +611,9 @@ class TestSessionIntegration:
     """Integration tests for complete session workflow."""
     
     @pytest.fixture
-    def sample_cli_args(self) -> CLIArguments:
+    def sample_cli_args(self) -> ConnectArguments:
         """Sample CLI arguments for testing."""
-        return CLIArguments(
+        return ConnectArguments(
             session_id="test-session-123",
             stream_url="wss://example.com/stream",
             token_value="test-token-456",
@@ -630,7 +656,7 @@ class TestSessionIntegration:
     async def test_argument_validation(self):
         """Test CLI argument validation."""
         # Invalid args - missing required fields
-        invalid_args = CLIArguments(
+        invalid_args = ConnectArguments(
             session_id="",
             stream_url="",
             token_value=""
@@ -659,40 +685,198 @@ The plugin needs to be registered with AWS CLI:
 }
 ```
 
-### Usage Example
+### Phase 4A Usage Examples
 ```bash
-# Typical AWS CLI usage
-aws ssm start-session --target i-1234567890abcdef0
+# AWS CLI integration (connects with existing session parameters)
+session-manager-plugin connect '{"sessionId":"sess-123","streamUrl":"wss://...","tokenValue":"..."}'
 
-# Direct plugin usage for testing
-session-manager-plugin '{"sessionId":"sess-123","streamUrl":"wss://...","tokenValue":"..."}'
+# Direct connect command for testing
+session-manager-plugin connect --session-id sess-123 --stream-url wss://example.com --token-value token123
 ```
 
-## Validation Steps
+## Phase 4A Validation Steps
 
 1. **Test CLI argument parsing:**
    ```bash
-   python -m session_manager_plugin.cli --help
+   session-manager-plugin --help
+   session-manager-plugin connect --help
    ```
 
 2. **Test JSON input processing:**
    ```bash
-   echo '{"sessionId":"test","streamUrl":"wss://test","tokenValue":"token"}' | python -m session_manager_plugin.cli
+   session-manager-plugin connect '{"sessionId":"test","streamUrl":"wss://test","tokenValue":"token"}'
    ```
 
 3. **Test integration with mock WebSocket server**
 4. **Verify signal handling and graceful shutdown**
 
-## Success Criteria
+## Phase 4A Success Criteria
 
-- [x] CLI interface processes AWS CLI JSON input correctly
-- [x] Session and WebSocket components integrate seamlessly
-- [x] Argument validation prevents invalid configurations
-- [x] Signal handling enables graceful shutdown
-- [x] Logging provides appropriate visibility
-- [x] stdin/stdout handling works for interactive sessions
-- [x] Integration tests validate complete workflow
+- [ ] CLI interface with subcommands structure
+- [ ] `connect` command processes AWS CLI JSON input correctly
+- [ ] Session and WebSocket components integrate seamlessly
+- [ ] Argument validation prevents invalid configurations
+- [ ] Signal handling enables graceful shutdown
+- [ ] Logging provides appropriate visibility
+- [ ] stdin/stdout handling works for interactive sessions
+- [ ] Integration tests validate complete workflow
+
+## Phase 4B: SSH Command & AWS Integration
+
+### Additional CLI Arguments for SSH Command
+
+#### src/session_manager_plugin/cli/types.py (additions)
+```python
+@dataclass
+class SSHArguments:
+    """CLI arguments for ssh command (AWS SSM integration)."""
+    
+    # Required target
+    target: str
+    
+    # Optional session configuration
+    document_name: str = "SSM-SessionManagerRunShell"
+    session_type: str = "Standard_Stream"
+    
+    # AWS configuration
+    profile: Optional[str] = None
+    region: Optional[str] = None
+    endpoint_url: Optional[str] = None
+    
+    # Additional session parameters
+    parameters: Optional[Dict[str, Any]] = None
+    
+    def validate(self) -> List[str]:
+        """Validate SSH arguments."""
+        errors = []
+        
+        if not self.target:
+            errors.append("target is required")
+        
+        # Basic target format validation (instance-id, etc.)
+        if self.target and not (
+            self.target.startswith('i-') or  # EC2 instance
+            self.target.startswith('mi-') or  # Managed instance
+            self.target.startswith('ssm-')    # Custom target
+        ):
+            errors.append("target must be a valid instance ID or managed instance ID")
+        
+        return errors
+```
+
+### SSH Command Implementation
+
+```python
+@cli.command()
+@click.option('--target', required=True, help='Target EC2 instance or managed instance ID')
+@click.option('--document-name', default='SSM-SessionManagerRunShell', help='SSM document name')
+@click.option('--parameters', help='Session parameters (JSON)')
+@click.option('--profile', help='AWS profile')
+@click.option('--region', help='AWS region')
+@click.option('--endpoint-url', help='AWS endpoint URL')
+@click.pass_context
+def ssh(ctx, **kwargs) -> None:
+    """
+    Start an interactive SSH-like session with AWS SSM.
+    
+    This command uses AWS SSM APIs to create a new session and then
+    connects to it automatically.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import BotoCoreError, ClientError
+        
+        # Parse arguments
+        filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        ssh_args = SSHArguments(**filtered_kwargs)
+        
+        # Validate arguments
+        errors = ssh_args.validate()
+        if errors:
+            for error in errors:
+                click.echo(f"Validation error: {error}", err=True)
+            sys.exit(1)
+        
+        # Set up AWS session
+        session_kwargs = {}
+        if ssh_args.profile:
+            session_kwargs['profile_name'] = ssh_args.profile
+        if ssh_args.region:
+            session_kwargs['region_name'] = ssh_args.region
+        
+        session = boto3.Session(**session_kwargs)
+        ssm = session.client('ssm', endpoint_url=ssh_args.endpoint_url)
+        
+        # Build start_session parameters
+        params = {'Target': ssh_args.target}
+        if ssh_args.document_name:
+            params['DocumentName'] = ssh_args.document_name
+        if ssh_args.parameters:
+            params['Parameters'] = ssh_args.parameters
+        
+        # Start session via SSM API
+        try:
+            response = ssm.start_session(**params)
+        except (BotoCoreError, ClientError) as e:
+            click.echo(f"Failed to start SSM session: {e}", err=True)
+            sys.exit(1)
+        
+        # Extract session details
+        session_id = response['SessionId']
+        token_value = response['TokenValue']
+        stream_url = response['StreamUrl']
+        
+        click.echo(f"Started SSM session: {session_id}")
+        
+        # Convert to ConnectArguments and run session
+        connect_args = ConnectArguments(
+            session_id=session_id,
+            stream_url=stream_url,
+            token_value=token_value,
+            target=ssh_args.target,
+            document_name=ssh_args.document_name,
+            session_type=ssh_args.session_type
+        )
+        
+        # Run the session
+        plugin = SessionManagerPlugin()
+        exit_code = asyncio.run(plugin.run_session(connect_args))
+        sys.exit(exit_code)
+        
+    except Exception as e:
+        click.echo(f"Fatal error: {e}", err=True)
+        sys.exit(1)
+```
+
+### Phase 4B Usage Examples
+```bash
+# User-friendly SSH-like interface
+session-manager-plugin ssh --target i-1234567890abcdef0
+
+# SSH with custom document
+session-manager-plugin ssh --target i-1234567890abcdef0 --document-name SSM-SessionManagerRunShell
+
+# SSH with AWS profile and region
+session-manager-plugin ssh --target i-1234567890abcdef0 --profile production --region us-west-2
+```
+
+## Combined Success Criteria
+
+**Phase 4A:**
+- [ ] CLI interface with subcommands structure
+- [ ] `connect` command for direct session parameters
+- [ ] Session and WebSocket integration working
+- [ ] Argument validation and error handling
+- [ ] Signal handling and graceful shutdown
+- [ ] Integration tests passing
+
+**Phase 4B:**
+- [ ] `ssh` command with AWS SSM integration
+- [ ] AWS credential discovery working
+- [ ] SSM document defaults implemented
+- [ ] Target-based session creation functional
+- [ ] End-to-end user workflow complete
 
 ## Next Phase
 
-Proceed to [Phase 5: Testing & Packaging](04_testing_packaging.md) once CLI integration is complete and functional.
+Proceed to [Phase 5: Testing & Packaging](04_testing_packaging.md) once both Phase 4A and 4B are complete and functional.

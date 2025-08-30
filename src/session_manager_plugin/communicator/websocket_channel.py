@@ -6,8 +6,8 @@ import asyncio
 import json
 from typing import Any, Dict, Optional
 
-import websockets
-from websockets import ClientConnection
+from websockets.asyncio.client import connect
+from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed
 
 from ..utils.logging import get_logger
@@ -53,11 +53,21 @@ class WebSocketChannel:
     @property
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
-        return (
-            self._connection_state == ConnectionState.CONNECTED
-            and self._websocket is not None
-            and self._websocket.state.name == "OPEN"
-        )
+        if (
+            self._connection_state != ConnectionState.CONNECTED
+            or self._websocket is None
+        ):
+            return False
+
+        # Use exception-based checking as recommended in v15.0.1
+        try:
+            # If we can check the protocol attribute, connection is still alive
+            return (
+                hasattr(self._websocket, "protocol")
+                and self._websocket.protocol is not None
+            )
+        except Exception:
+            return False
 
     @property
     def connection_state(self) -> ConnectionState:
@@ -111,9 +121,9 @@ class WebSocketChannel:
 
         try:
             self._websocket = await asyncio.wait_for(
-                websockets.connect(
+                connect(
                     self._config.url,
-                    extra_headers=headers,
+                    additional_headers=headers,
                     max_size=self._config.max_message_size,
                     ping_interval=None,  # We handle pings manually
                     ping_timeout=None,
