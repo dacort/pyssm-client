@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 import websockets
 from websockets import ClientConnection
-from websockets.exceptions import ConnectionClosed, WebSocketException
+from websockets.exceptions import ConnectionClosed
 
 from ..utils.logging import get_logger
 from .types import (
@@ -56,7 +56,7 @@ class WebSocketChannel:
         return (
             self._connection_state == ConnectionState.CONNECTED
             and self._websocket is not None
-            and self._websocket.state.name == 'OPEN'
+            and self._websocket.state.name == "OPEN"
         )
 
     @property
