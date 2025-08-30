@@ -1,7 +1,5 @@
-"""CLI interface module."""
+"""CLI package."""
 
+from .main import main
 
-def main() -> int:
-    """Main CLI entry point - placeholder for Phase 4."""
-    print("Python Session Manager Plugin - Phase 4 implementation pending")
-    return 0
+__all__ = ["main"]
