@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Optional
 
 from ..session.protocols import IDataChannel
 from ..utils.logging import get_logger
+from .protocol import parse_client_message
 from .types import ConnectionState, MessageType, WebSocketConfig, WebSocketMessage
 from .websocket_channel import WebSocketChannel
 
@@ -89,36 +90,47 @@ class SessionDataChannel(IDataChannel):
     def _handle_message(self, message: WebSocketMessage) -> None:
         """Handle incoming WebSocket message."""
         try:
-            # Log all incoming messages for debugging
-            self.logger.debug(f"Received {message.message_type.value} message: {len(str(message.data))} chars/bytes")
-            
             if message.message_type == MessageType.BINARY:
-                # message.data should be bytes for binary messages
+                # Parse AWS SSM binary protocol
                 if isinstance(message.data, bytes):
-                    # For debugging: log first 100 bytes as hex
-                    self.logger.debug(f"Binary data (hex): {message.data[:100].hex()}")
+                    client_message = parse_client_message(message.data)
                     
-                    if self._input_handler:
-                        self._input_handler(message.data)
-                    else:
+                    if client_message:
                         self.logger.debug(
-                            f"Received {len(message.data)} bytes (no handler)"
+                            f"Parsed AWS SSM message: type={client_message.message_type}, "
+                            f"payload_type={client_message.payload_type}, "
+                            f"payload_length={client_message.payload_length}"
                         )
+                        
+                        # Handle shell output data
+                        if client_message.is_shell_output():
+                            shell_data = client_message.get_shell_data()
+                            if shell_data and self._input_handler:
+                                # Send only the shell content as bytes
+                                self._input_handler(shell_data.encode('utf-8'))
+                            elif shell_data:
+                                self.logger.debug(f"Shell output (no handler): {shell_data[:100]}")
+                        else:
+                            # Handle other message types (handshakes, etc.)
+                            self.logger.debug(
+                                f"Non-shell message: type={client_message.message_type}, "
+                                f"payload_type={client_message.payload_type}"
+                            )
+                    else:
+                        # Fallback for unparseable messages
+                        self.logger.debug(f"Failed to parse binary message: {len(message.data)} bytes")
+                        if self._input_handler:
+                            self._input_handler(message.data)
 
             elif message.message_type == MessageType.TEXT:
-                # message.data should be str for text messages
+                # Handle text messages (handshake responses, etc.)
                 if isinstance(message.data, str):
-                    # For debugging: log text content
-                    self.logger.debug(f"Text message content: {message.data[:200]}...")
+                    self.logger.debug(f"Text message: {message.data[:200]}...")
                     
                     # Convert text to bytes for consistent handling
                     data = message.data.encode("utf-8")
                     if self._input_handler:
                         self._input_handler(data)
-                    else:
-                        self.logger.debug(
-                            f"Received text message (no handler): {message.data[:100]}..."
-                        )
 
         except Exception as e:
             self.logger.error(f"Error handling message: {e}")

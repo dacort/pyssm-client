@@ -29,7 +29,7 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - [x] **Phase 2 implementation** ✅ - Core session management complete
 - [x] **Phase 3 implementation** ✅ - WebSocket communication complete
 - [x] **Phase 4A implementation** ✅ - Core CLI structure and connect command complete
-- [ ] Phase 4B implementation - SSH command and AWS SSM integration
+- [~] **Phase 4B implementation** ⚠️ - SSH command with AWS SSM integration (protocol parsing working, interactive I/O needs completion)
 - [ ] Phase 5 implementation
 
 ### Phase 1 Completed ✅
@@ -72,6 +72,18 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - Successfully tested with real AWS SSM session parameters
 - 81/81 total tests passing, full type checking and linting compliance
 
+### Phase 4B Nearly Complete ⚠️
+- SSHArguments dataclass for user-friendly target-based sessions
+- SSH subcommand with AWS SSM API integration (`session-manager-plugin ssh --target i-xxx`)
+- AWS credential discovery and authentication working
+- Successful SSM session creation via boto3 start_session() API
+- WebSocket connection establishment with AWS infrastructure
+- AWS SSM protocol handshake initialization working
+- **AWS SSM binary protocol parser implemented** - parses ClientMessage format correctly
+- **Clean shell output extraction** - displays actual shell prompts (`sh-5.2$`) without protocol overhead  
+- **Protocol message handling** - successfully parsing `output_stream_data` messages with PayloadType=1
+- Shell prompt display working, but **interactive input/output not fully functional yet**
+
 ## Development Workflow
 
 1. Complete each phase fully before moving to the next
@@ -87,6 +99,13 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - `click` - CLI interface framework (noted in Phase 4 docs)
 - `boto3` - AWS SDK integration
 - `pydantic` - Data validation and serialization
+
+## Major Technical Achievements
+
+- **AWS SSM Binary Protocol Parser**: Implemented complete ClientMessage format parsing mirroring the Go reference implementation
+- **Real AWS Integration**: Successfully connects to AWS SSM infrastructure with proper authentication and handshaking
+- **Protocol Message Handling**: Correctly parses `output_stream_data`, `input_stream_data` with PayloadType extraction  
+- **Clean Shell Output**: Extracts shell content from AWS binary protocol (removing protocol overhead)
 
 ## Important Notes
 
