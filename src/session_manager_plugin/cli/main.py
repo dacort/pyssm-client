@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 import click
 
-from .types import ConnectArguments
+from .types import ConnectArguments, SSHArguments
 from ..communicator.data_channel import SessionDataChannel
 from ..communicator.utils import create_websocket_config
 from ..session.session_handler import SessionHandler
@@ -283,6 +283,88 @@ def connect(ctx: click.Context, json_input: Optional[str], **kwargs: Any) -> Non
         # Run the session
         plugin = SessionManagerPlugin()
         exit_code = asyncio.run(plugin.run_session(args))
+        sys.exit(exit_code)
+
+    except Exception as e:
+        click.echo(f"Fatal error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--target", required=True, help="Target EC2 instance or managed instance ID")
+@click.option("--document-name", help="SSM document name")
+@click.option("--parameters", help="Session parameters (JSON)")
+@click.option("--profile", help="AWS profile")
+@click.option("--region", help="AWS region")
+@click.option("--endpoint-url", help="AWS endpoint URL")
+@click.pass_context
+def ssh(ctx: click.Context, **kwargs: Any) -> None:
+    """
+    Start an interactive SSH-like session with AWS SSM.
+    
+    This command uses AWS SSM APIs to create a new session and then
+    connects to it automatically.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        # Parse arguments
+        filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        ssh_args = SSHArguments(**filtered_kwargs)
+
+        # Validate arguments
+        errors = ssh_args.validate()
+        if errors:
+            for error in errors:
+                click.echo(f"Validation error: {error}", err=True)
+            sys.exit(1)
+
+        # Set up AWS session
+        session_kwargs = {}
+        if ssh_args.profile:
+            session_kwargs["profile_name"] = ssh_args.profile
+        if ssh_args.region:
+            session_kwargs["region_name"] = ssh_args.region
+
+        session = boto3.Session(**session_kwargs)
+        ssm = session.client("ssm", endpoint_url=ssh_args.endpoint_url)
+
+        # Build start_session parameters
+        params = {"Target": ssh_args.target}
+        if ssh_args.document_name:
+            params["DocumentName"] = ssh_args.document_name
+        if ssh_args.parameters:
+            params["Parameters"] = ssh_args.parameters
+
+        # Start session via SSM API
+        try:
+            click.echo(f"Starting SSM session to {ssh_args.target}...")
+            response = ssm.start_session(**params)
+        except (BotoCoreError, ClientError) as e:
+            click.echo(f"Failed to start SSM session: {e}", err=True)
+            sys.exit(1)
+
+        # Extract session details
+        session_id = response["SessionId"]
+        token_value = response["TokenValue"]
+        stream_url = response["StreamUrl"]
+
+        click.echo(f"Session started: {session_id}")
+
+        # Convert to ConnectArguments and run session
+        connect_args = ConnectArguments(
+            session_id=session_id,
+            stream_url=stream_url,
+            token_value=token_value,
+            target=ssh_args.target,
+            document_name=ssh_args.document_name,
+            session_type=ssh_args.session_type,
+        )
+
+        # Run the session
+        plugin = SessionManagerPlugin()
+        exit_code = asyncio.run(plugin.run_session(connect_args))
         sys.exit(exit_code)
 
     except Exception as e:

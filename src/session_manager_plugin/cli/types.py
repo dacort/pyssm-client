@@ -95,3 +95,46 @@ class ConnectArguments:
                 errors.append(str(e))
 
         return errors
+
+
+@dataclass
+class SSHArguments:
+    """CLI arguments for ssh command (AWS SSM integration)."""
+
+    # Required target
+    target: str
+
+    # Optional session configuration
+    document_name: Optional[str] = None
+    session_type: str = "Standard_Stream"
+
+    # AWS configuration
+    profile: Optional[str] = None
+    region: Optional[str] = None
+    endpoint_url: Optional[str] = None
+
+    # Additional session parameters
+    parameters: Optional[Dict[str, Any]] = None
+
+    # Debug and logging
+    verbose: bool = False
+    log_file: Optional[str] = None
+
+    def validate(self) -> List[str]:
+        """Validate SSH arguments."""
+        errors = []
+
+        if not self.target:
+            errors.append("target is required")
+
+        # Basic target format validation (instance-id, etc.)
+        if self.target and not (
+            self.target.startswith("i-")
+            or self.target.startswith("mi-")  # EC2 instance  # Managed instance
+            or self.target.startswith("ssm-")  # Custom target
+        ):
+            errors.append(
+                "target must be a valid instance ID (i-*) or managed instance ID (mi-*)"
+            )
+
+        return errors

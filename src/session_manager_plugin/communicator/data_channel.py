@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import uuid
 from typing import Any, Callable, Dict, Optional
 
 from ..session.protocols import IDataChannel
@@ -35,6 +37,8 @@ class SessionDataChannel(IDataChannel):
             success = await self._channel.connect()
 
             if success:
+                # Send AWS SSM protocol handshake initialization
+                await self._send_handshake_initialization()
                 self.logger.info("Data channel opened successfully")
             else:
                 self.logger.error("Failed to open data channel")
@@ -51,6 +55,10 @@ class SessionDataChannel(IDataChannel):
             raise RuntimeError("Data channel not open")
 
         try:
+            # For debugging: log what we're sending
+            self.logger.debug(f"Sending {len(data)} bytes: {data[:50]}")
+            
+            # Send raw bytes directly (AWS SSM protocol handles binary data)
             await self._channel.send_message(data)
             self.logger.debug(f"Sent {len(data)} bytes of input data")
 
@@ -81,9 +89,15 @@ class SessionDataChannel(IDataChannel):
     def _handle_message(self, message: WebSocketMessage) -> None:
         """Handle incoming WebSocket message."""
         try:
+            # Log all incoming messages for debugging
+            self.logger.debug(f"Received {message.message_type.value} message: {len(str(message.data))} chars/bytes")
+            
             if message.message_type == MessageType.BINARY:
                 # message.data should be bytes for binary messages
                 if isinstance(message.data, bytes):
+                    # For debugging: log first 100 bytes as hex
+                    self.logger.debug(f"Binary data (hex): {message.data[:100].hex()}")
+                    
                     if self._input_handler:
                         self._input_handler(message.data)
                     else:
@@ -94,6 +108,9 @@ class SessionDataChannel(IDataChannel):
             elif message.message_type == MessageType.TEXT:
                 # message.data should be str for text messages
                 if isinstance(message.data, str):
+                    # For debugging: log text content
+                    self.logger.debug(f"Text message content: {message.data[:200]}...")
+                    
                     # Convert text to bytes for consistent handling
                     data = message.data.encode("utf-8")
                     if self._input_handler:
@@ -120,3 +137,23 @@ class SessionDataChannel(IDataChannel):
             return self._channel.get_connection_info()
         else:
             return {"state": "not_initialized", "is_open": False}
+
+    async def _send_handshake_initialization(self) -> None:
+        """Send AWS SSM protocol handshake initialization message."""
+        try:
+            # Create handshake message as per AWS SSM protocol
+            handshake_message = {
+                "MessageSchemaVersion": "1.0",
+                "RequestId": str(uuid.uuid4()),
+                "TokenValue": self._config.token
+            }
+            
+            # Send as JSON text message
+            message_json = json.dumps(handshake_message)
+            await self._channel.send_message(message_json)
+            
+            self.logger.debug(f"Sent handshake initialization: RequestId={handshake_message['RequestId']}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to send handshake initialization: {e}")
+            raise
