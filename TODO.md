@@ -54,9 +54,7 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
    - Buffer future `output_stream_data` frames by sequence and print them in order starting from the expected sequence; still ack on receipt.
    - Verification: No functional change under normal conditions. Under out-of-order delivery, output should appear correctly ordered.
    - Status: DONE (verified)
-6. Handle SessionType from HandshakeRequest
-   - Parse `RequestedClientActions` where `ActionType == SessionType`, store session type and properties, and include in diagnostics.
-   - Verification: Start a session with `-v` and confirm a log like `Handshake: session_type=<value>` appears after handshake.
+ 
 
 ## Process / Instructions
 
@@ -96,6 +94,7 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 
 7) Typing modernization
    - Use `| None` and `dict[str, Any]` style hints; add return types for helpers.
+   - Status: DONE (verified)
 
 8) Tests coverage additions
    - Add unit tests for ack UUID layout/digest and out-of-order buffering.
@@ -114,4 +113,4 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 - [x] 2) Unify message serialization helpers
 - [x] 3) Trim unused dependencies (`pydantic`)
 - [x] 4) CLI flag for input coalescing
- - [x] 5) Async signal handling on Unix
+- [x] 5) Async signal handling on Unix

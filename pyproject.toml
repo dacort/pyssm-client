@@ -15,7 +15,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 
 [project.scripts]
-session-manager-plugin = "session_manager_plugin.cli:main"
+session-manager-plugin = "session_manager_plugin.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
