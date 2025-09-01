@@ -52,6 +52,7 @@ class SessionDataChannel(IDataChannel):
         # Handshake session metadata
         self._session_type: str | None = None
         self._session_properties: dict[str, Any] | None = None
+        self._agent_version: str | None = None
         # Input coalescing (disabled by default; better for TTY interactivity)
         self._coalesce_enabled: bool = False
         self._input_buffer = bytearray()
@@ -76,7 +77,7 @@ class SessionDataChannel(IDataChannel):
             if success:
                 # Send AWS SSM protocol handshake initialization
                 await self._send_handshake_initialization()
-                self.logger.info("Data channel opened successfully")
+                self.logger.debug("Data channel opened successfully")
             else:
                 self.logger.error("Failed to open data channel")
 
@@ -170,7 +171,7 @@ class SessionDataChannel(IDataChannel):
         if self._channel:
             await self._channel.close()
             self._channel = None
-            self.logger.info("Data channel closed")
+            self.logger.debug("Data channel closed")
         # Cancel pending flush
         try:
             if self._flush_task and not self._flush_task.done():
@@ -233,9 +234,16 @@ class SessionDataChannel(IDataChannel):
                                     self._input_handler((cust_msg + "\n").encode('utf-8'))
                             except Exception as e:
                                 self.logger.debug(f"Failed to parse HandshakeComplete payload: {e}")
-                            # Log session type if known
-                            if self._session_type:
-                                self.logger.info(f"Handshake: session_type={self._session_type}")
+                            # Log summary (agent_version, session_type, client_version)
+                            summary = {
+                                "agent_version": self._agent_version or "",
+                                "session_type": self._session_type or "",
+                                "client_version": self._client_version,
+                            }
+                            self.logger.debug(
+                                "Handshake complete: agent_version=%s, session_type=%s, client_version=%s",
+                                summary["agent_version"], summary["session_type"], summary["client_version"],
+                            )
                             message_processed = True
                         elif client_message.payload_type == PayloadType.ENC_CHALLENGE_REQUEST:
                             # Not supported; log only
@@ -345,7 +353,7 @@ class SessionDataChannel(IDataChannel):
 
     def _handle_connection_change(self, state: ConnectionState) -> None:
         """Handle connection state changes."""
-        self.logger.info(f"Data channel connection state: {state.value}")
+        self.logger.debug(f"Data channel connection state: {state.value}")
         if state in (ConnectionState.CLOSED, ConnectionState.ERROR):
             self._trigger_closed()
 
@@ -452,6 +460,8 @@ class SessionDataChannel(IDataChannel):
             try:
                 request = _json.loads(original_message.payload.decode('utf-8', errors='ignore'))
                 actions = request.get("RequestedClientActions", [])
+                # Capture AgentVersion if present
+                self._agent_version = request.get("AgentVersion") or self._agent_version
                 for action in actions:
                     atype = action.get("ActionType")
                     processed = {"ActionType": atype, "ActionStatus": 1}  # Success

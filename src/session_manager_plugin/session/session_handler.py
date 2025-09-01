@@ -54,7 +54,7 @@ class SessionHandler:
             # Start session
             await session.execute()
 
-            self._logger.info(f"Session {config.session_id} started successfully")
+            self._logger.debug(f"Session {config.session_id} started successfully")
             return session
 
         except (ValueError, KeyError) as e:
@@ -89,7 +89,7 @@ class SessionHandler:
             # Track active session
             self._active_sessions[config.session_id] = session
 
-            self._logger.info(f"Session {config.session_id} created successfully")
+            self._logger.debug(f"Session {config.session_id} created successfully")
             return session
 
         except (ValueError, KeyError) as e:
@@ -205,7 +205,7 @@ class SessionHandler:
         try:
             await session.terminate_session()
             del self._active_sessions[session_id]
-            self._logger.info(f"Session {session_id} terminated successfully")
+            self._logger.debug(f"Session {session_id} terminated successfully")
         except Exception as e:
             self._logger.error(f"Error terminating session {session_id}: {e}")
             # Remove from tracking even if termination failed
@@ -229,7 +229,7 @@ class SessionHandler:
                 f"Failed to terminate some sessions: {'; '.join(errors)}"
             )
 
-        self._logger.info("All sessions terminated successfully")
+        self._logger.debug("All sessions terminated successfully")
 
     def get_active_sessions(self) -> List[Dict[str, Any]]:
         """Get information about active sessions.

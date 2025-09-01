@@ -54,14 +54,14 @@ class Session(ISession):
     async def execute(self) -> None:
         """Execute the session by opening data channel and setting up handlers."""
         try:
-            self._logger.info(f"Executing session {self.session_id}")
+            self._logger.debug(f"Executing session {self.session_id}")
 
             if not await self.open_data_channel():
                 self._status = SessionStatus.FAILED
                 raise RuntimeError("Failed to open data channel")
 
             self._status = SessionStatus.CONNECTED
-            self._logger.info(f"Session {self.session_id} connected successfully")
+            self._logger.debug(f"Session {self.session_id} connected successfully")
 
             await self._setup_session_handlers()
 
@@ -94,14 +94,14 @@ class Session(ISession):
     async def terminate_session(self) -> None:
         """Terminate the session and cleanup resources."""
         try:
-            self._logger.info(f"Terminating session {self.session_id}")
+            self._logger.debug(f"Terminating session {self.session_id}")
             self._status = SessionStatus.TERMINATING
 
             if self._data_channel and self._data_channel.is_open:
                 await self._data_channel.close()
 
             self._status = SessionStatus.TERMINATED
-            self._logger.info(f"Session {self.session_id} terminated successfully")
+            self._logger.debug(f"Session {self.session_id} terminated successfully")
 
         except Exception as e:
             self._logger.error(f"Error during session termination: {e}")

@@ -110,7 +110,7 @@ class WebSocketChannel:
 
     async def _attempt_connection(self) -> None:
         """Attempt a single WebSocket connection."""
-        self._logger.info(f"Connecting to {self._config.url}")
+        self._logger.debug(f"Connecting to {self._config.url}")
         await self._set_connection_state(ConnectionState.CONNECTING)
 
         # Prepare connection headers
@@ -132,7 +132,7 @@ class WebSocketChannel:
             )
 
             await self._set_connection_state(ConnectionState.CONNECTED)
-            self._logger.info("WebSocket connection established")
+            self._logger.debug("WebSocket connection established")
 
             # Start background tasks
             await self._start_background_tasks()
@@ -182,7 +182,7 @@ class WebSocketChannel:
         if self._connection_state in (ConnectionState.CLOSING, ConnectionState.CLOSED):
             return
 
-        self._logger.info("Closing WebSocket connection")
+        self._logger.debug("Closing WebSocket connection")
         await self._set_connection_state(ConnectionState.CLOSING)
 
         # Cancel background tasks
@@ -196,7 +196,7 @@ class WebSocketChannel:
                 self._logger.error(f"Error closing WebSocket: {e}")
 
         await self._set_connection_state(ConnectionState.CLOSED)
-        self._logger.info("WebSocket connection closed")
+        self._logger.debug("WebSocket connection closed")
 
     async def _stop_background_tasks(self) -> None:
         """Stop all background tasks."""
@@ -276,7 +276,7 @@ class WebSocketChannel:
                                 self._error_handler(e)
 
                 except ConnectionClosed:
-                    self._logger.info("WebSocket connection closed by remote")
+                    self._logger.debug("WebSocket connection closed by remote")
                     await self._set_connection_state(ConnectionState.CLOSED)
                     break
                 except Exception as e:

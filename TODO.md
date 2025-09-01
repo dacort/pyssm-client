@@ -92,6 +92,7 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 
 6) Constants module / small refactors
    - Move protocol constants (payload types, message names, client version) to a dedicated module; keep data channel slimmer via smaller helpers.
+   - Status: DONE (verified)
 
 7) Typing modernization
    - Use `| None` and `dict[str, Any]` style hints; add return types for helpers.
@@ -100,7 +101,7 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
    - Add unit tests for ack UUID layout/digest and out-of-order buffering.
 
 9) Logging tuning
-   - Normalize log levels; add a single high‑level handshake summary log.
+   - Normalize log levels; add a concise handshake summary (agent_version, session_type, client_version) and keep per-frame details at DEBUG.
 
 10) Optional outgoing resend buffer
    - Only if needed; otherwise omit for simplicity with WebSocket reliability.

@@ -82,7 +82,7 @@ class SessionManagerPlugin:
             # Set up signal handlers for graceful shutdown
             self._setup_signal_handlers()
 
-            self.logger.info(f"Session {args.session_id} started successfully")
+            self.logger.debug(f"Session {args.session_id} started successfully")
 
             # If interactive TTY, configure terminal and send initial size
             if sys.stdin.isatty():
@@ -96,7 +96,7 @@ class SessionManagerPlugin:
             return 0
 
         except KeyboardInterrupt:
-            self.logger.info("Received interrupt signal")
+            self.logger.debug("Received interrupt signal")
             return 130  # SIGINT exit code
         except Exception as e:
             self.logger.error(f"Session failed: {e}", exc_info=True)
@@ -223,7 +223,7 @@ class SessionManagerPlugin:
                 loop.create_task(self._initiate_shutdown())
 
         def sigterm_handler(signum: int, frame: Any) -> None:
-            self.logger.info("SIGTERM: initiating shutdown")
+            self.logger.debug("SIGTERM: initiating shutdown")
             loop.create_task(self._initiate_shutdown())
 
         def sigwinch_handler(signum: int, frame: Any) -> None:
@@ -295,7 +295,7 @@ class SessionManagerPlugin:
     async def _initiate_shutdown(self) -> None:
         """Initiate graceful shutdown."""
         if not self._shutdown_event.is_set():
-            self.logger.info("Initiating shutdown...")
+            self.logger.debug("Initiating shutdown...")
             self._shutdown_event.set()
 
     async def _wait_for_completion(self) -> None:
@@ -386,7 +386,7 @@ class SessionManagerPlugin:
             except Exception as e:
                 self.logger.error(f"Error terminating session: {e}")
 
-        self.logger.info("Cleanup completed")
+        self.logger.debug("Cleanup completed")
 
     def _enter_cbreak_noecho(self) -> None:
         """Put terminal into cbreak mode and disable echo (like Go plugin)."""
