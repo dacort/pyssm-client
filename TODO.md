@@ -102,6 +102,7 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 
 9) Logging tuning
    - Normalize log levels; add a concise handshake summary (agent_version, session_type, client_version) and keep per-frame details at DEBUG.
+   - Status: DONE (verified)
 
 10) Optional outgoing resend buffer
    - Only if needed; otherwise omit for simplicity with WebSocket reliability.

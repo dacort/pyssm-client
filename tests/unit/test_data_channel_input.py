@@ -1,7 +1,7 @@
 """Unit tests for SessionDataChannel input behavior.
 
 These tests verify:
-- Outbound input messages use PayloadType.FLAG and incrementing sequence numbers
+- Outbound input messages use PayloadType.OUTPUT and incrementing sequence numbers (starting at 0)
 - Handshake MessageSchemaVersion is numeric (1)
 - Line ending normalization maps LF/CRLF to CR
 """
@@ -58,13 +58,13 @@ async def test_input_payload_type_and_sequence() -> None:
     assert m1.message_type.strip() == "input_stream_data"
     assert m2.message_type.strip() == "input_stream_data"
 
-    # PayloadType for keyboard input must be FLAG
-    assert m1.payload_type == PayloadType.FLAG
-    assert m2.payload_type == PayloadType.FLAG
+    # PayloadType for keyboard input must be OUTPUT
+    assert m1.payload_type == PayloadType.OUTPUT
+    assert m2.payload_type == PayloadType.OUTPUT
 
-    # Sequence numbers must increment starting from 1
-    assert m1.sequence_number == 1
-    assert m2.sequence_number == 2
+    # Sequence numbers must increment starting from 0
+    assert m1.sequence_number == 0
+    assert m2.sequence_number == 1
 
 
 @pytest.mark.asyncio
