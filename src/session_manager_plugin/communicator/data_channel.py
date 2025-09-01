@@ -140,6 +140,23 @@ class SessionDataChannel(IDataChannel):
                             self.logger.info("Encryption challenge not supported; ignoring.")
                             message_processed = True
                         # Shell and stderr output
+                        elif client_message.message_type.strip() == "channel_closed":
+                            # Friendly notice then close
+                            try:
+                                import json as _json
+                                payload = _json.loads(client_message.payload.decode('utf-8', errors='ignore'))
+                                output = payload.get('Output') or payload.get('output') or "Session closed."
+                            except Exception:
+                                output = "Session closed."
+                            if self._input_handler:
+                                self._input_handler(("\n\n" + str(output) + "\n\n").encode('utf-8'))
+                            # Trigger close
+                            if self._closed_handler:
+                                try:
+                                    self._closed_handler()
+                                except Exception:
+                                    pass
+                            message_processed = True
                         elif client_message.is_shell_output():
                             shell_data = client_message.get_shell_data()
                             if shell_data and self._input_handler:
@@ -152,8 +169,8 @@ class SessionDataChannel(IDataChannel):
                         
                         # Handle AWS SSM sequence tracking properly
                         if message_processed:
-                            # Only acknowledge non-ack messages
-                            if client_message.message_type != "acknowledge":
+                            # Only acknowledge applicable messages (not ack or channel_closed)
+                            if client_message.message_type not in ("acknowledge", "channel_closed"):
                                 self._schedule_acknowledgment(client_message)
 
                             # Update expected sequence only for output stream messages
