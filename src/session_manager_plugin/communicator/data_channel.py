@@ -11,8 +11,11 @@ from ..utils.logging import get_logger
 from .protocol import (
     parse_client_message,
     create_acknowledge_message,
-    PayloadType,
     serialize_client_message,
+)
+from ..constants import (
+    PayloadType,
+    CLIENT_VERSION,
     MESSAGE_INPUT_STREAM,
     MESSAGE_OUTPUT_STREAM,
     MESSAGE_ACKNOWLEDGE,
@@ -43,7 +46,7 @@ class SessionDataChannel(IDataChannel):
         self._out_seq = 0
         # Client metadata for handshake
         self._client_id: str | None = None
-        self._client_version: str = "python-session-manager-plugin/0.1.0"
+        self._client_version: str = CLIENT_VERSION
         # Flow control: input gating
         self._input_allowed: bool = True
         # Handshake session metadata
@@ -440,7 +443,7 @@ class SessionDataChannel(IDataChannel):
 
             # Default response with no processed actions
             response = {
-                "ClientVersion": "python-session-manager-plugin/0.1.0",
+                "ClientVersion": CLIENT_VERSION,
                 "ProcessedClientActions": [],
                 "Errors": [],
             }

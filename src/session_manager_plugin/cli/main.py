@@ -15,6 +15,7 @@ import click
 
 from .types import ConnectArguments, SSHArguments
 from ..communicator.data_channel import SessionDataChannel
+from ..constants import CLIENT_VERSION
 from ..communicator.utils import create_websocket_config
 from ..session.session_handler import SessionHandler
 from ..session.types import ClientConfig, SessionConfig, SessionType
@@ -70,7 +71,7 @@ class SessionManagerPlugin:
             # Set up data channel for session BEFORE executing
             # Also supply client metadata for handshake
             try:
-                data_channel.set_client_info(self._current_session.client_id, "python-session-manager-plugin/0.1.0")
+                data_channel.set_client_info(self._current_session.client_id, CLIENT_VERSION)
             except Exception:
                 pass
             self._current_session.set_data_channel(data_channel)

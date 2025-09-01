@@ -90,8 +90,8 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
    - Prefer `loop.add_signal_handler` where available; fall back to `signal.signal` otherwise.
    - Verification: Ctrl-C/Z/\ forwarding still works; process exits cleanly on SIGTERM.
 
-6) Constants module / small refactors (optional)
-   - Move protocol constants to a dedicated module; keep data channel slimmer via smaller helpers.
+6) Constants module / small refactors
+   - Move protocol constants (payload types, message names, client version) to a dedicated module; keep data channel slimmer via smaller helpers.
 
 7) Typing modernization
    - Use `| None` and `dict[str, Any]` style hints; add return types for helpers.
