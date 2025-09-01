@@ -9,7 +9,7 @@ import json
 import logging
 import signal
 import sys
-from typing import Any, Optional
+from typing import Any
 
 import click
 
@@ -27,10 +27,10 @@ class SessionManagerPlugin:
     def __init__(self) -> None:
         self.logger = get_logger(__name__)
         self._session_handler = SessionHandler()
-        self._current_session: Optional[Any] = None
+        self._current_session: Any | None = None
         self._shutdown_event = asyncio.Event()
-        self._orig_term_attrs: Optional[list[int]] = None
-        self._resize_task: Optional[asyncio.Task] = None
+        self._orig_term_attrs: list[int] | None = None
+        self._resize_task: asyncio.Task | None = None
         # Input coalescing configuration (managed via CLI)
         self._coalesce_mode: str = "auto"  # "auto" | "on" | "off"
         self._coalesce_delay_ms: float = 10.0
@@ -469,7 +469,7 @@ class SessionManagerPlugin:
 def cli(
     ctx: click.Context,
     verbose: bool,
-    log_file: Optional[str],
+    log_file: str | None,
     coalesce_input: str,
     coalesce_delay_ms: float,
 ) -> None:
@@ -499,7 +499,7 @@ def cli(
 @click.option("--region", help="AWS region")
 @click.option("--endpoint-url", help="AWS endpoint URL")
 @click.pass_context
-def connect(ctx: click.Context, json_input: Optional[str], **kwargs: Any) -> None:
+def connect(ctx: click.Context, json_input: str | None, **kwargs: Any) -> None:
     """
     Connect to existing session with direct parameters.
 

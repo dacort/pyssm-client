@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 from ..session.protocols import IDataChannel
 from ..utils.logging import get_logger
@@ -31,10 +31,10 @@ class SessionDataChannel(IDataChannel):
         """Initialize data channel with WebSocket configuration."""
         self.logger = get_logger(__name__)
         self._config = config
-        self._channel: Optional[WebSocketChannel] = None
-        self._input_handler: Optional[Callable[[bytes], None]] = None
-        self._output_handler: Optional[Callable[[bytes], None]] = None
-        self._closed_handler: Optional[Callable[[], None]] = None
+        self._channel: WebSocketChannel | None = None
+        self._input_handler: Callable[[bytes], None] | None = None
+        self._output_handler: Callable[[bytes], None] | None = None
+        self._closed_handler: Callable[[], None] | None = None
         
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
@@ -42,17 +42,17 @@ class SessionDataChannel(IDataChannel):
         # Outbound input sequence number (SSM expects monotonically increasing values starting at 0)
         self._out_seq = 0
         # Client metadata for handshake
-        self._client_id: Optional[str] = None
+        self._client_id: str | None = None
         self._client_version: str = "python-session-manager-plugin/0.1.0"
         # Flow control: input gating
         self._input_allowed: bool = True
         # Handshake session metadata
-        self._session_type: Optional[str] = None
-        self._session_properties: Optional[dict] = None
+        self._session_type: str | None = None
+        self._session_properties: dict[str, Any] | None = None
         # Input coalescing (disabled by default; better for TTY interactivity)
         self._coalesce_enabled: bool = False
         self._input_buffer = bytearray()
-        self._flush_task: Optional[asyncio.Task] = None  # type: ignore[name-defined]
+        self._flush_task: asyncio.Task | None = None  # type: ignore[name-defined]
         self._flush_delay_sec: float = 0.01
         # Out-of-order output buffering
         self._incoming_buffer: Dict[int, bytes] = {}
@@ -83,7 +83,7 @@ class SessionDataChannel(IDataChannel):
             self.logger.error(f"Error opening data channel: {e}")
             return False
 
-    def set_client_info(self, client_id: Optional[str], client_version: Optional[str] = None) -> None:
+    def set_client_info(self, client_id: str | None, client_version: str | None = None) -> None:
         """Set client metadata used during handshake."""
         if client_id:
             self._client_id = client_id
@@ -192,7 +192,7 @@ class SessionDataChannel(IDataChannel):
         """Set handler called when the channel closes or errors."""
         self._closed_handler = handler
 
-    def set_coalescing(self, enabled: bool, delay_sec: Optional[float] = None) -> None:
+    def set_coalescing(self, enabled: bool, delay_sec: float | None = None) -> None:
         """Configure input coalescing behavior."""
         self._coalesce_enabled = enabled
         if delay_sec is not None:
@@ -358,7 +358,7 @@ class SessionDataChannel(IDataChannel):
         except Exception as e:
             self.logger.debug(f"Closed handler error: {e}")
 
-    def get_channel_info(self) -> Dict[str, Any]:
+    def get_channel_info(self) -> dict[str, Any]:
         """Get channel information."""
         if self._channel:
             info = self._channel.get_connection_info()

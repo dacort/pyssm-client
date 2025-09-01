@@ -9,7 +9,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, Optional
+from typing import Any
 from uuid import UUID
 
 
@@ -111,7 +111,7 @@ class ClientMessage:
             return self.message_id.hex().upper()
 
 
-def parse_client_message(data: bytes) -> Optional[ClientMessage]:
+def parse_client_message(data: bytes) -> ClientMessage | None:
     """
     Parse AWS SSM binary ClientMessage format.
     
@@ -217,7 +217,7 @@ class AcknowledgeContent:
     acknowledged_message_sequence_number: int
     is_sequential_message: bool = True
 
-    def to_dict(self) -> Dict[str, any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "AcknowledgedMessageType": self.acknowledged_message_type,
