@@ -1,6 +1,12 @@
 """Main CLI interface for AWS Session Manager Plugin."""
 
 import asyncio
+import os
+import shutil
+import struct
+import fcntl
+import termios
+import tty
 import json
 import logging
 import signal
@@ -25,6 +31,7 @@ class SessionManagerPlugin:
         self._session_handler = SessionHandler()
         self._current_session: Optional[Any] = None
         self._shutdown_event = asyncio.Event()
+        self._orig_term_attrs: Optional[list[int]] = None
 
     async def run_session(self, args: ConnectArguments) -> int:
         """Run a session with the provided arguments."""
@@ -68,6 +75,11 @@ class SessionManagerPlugin:
             self._setup_signal_handlers()
 
             self.logger.info(f"Session {args.session_id} started successfully")
+
+            # If interactive TTY, configure terminal and send initial size
+            if sys.stdin.isatty():
+                self._enter_cbreak_noecho()
+                await self._send_initial_terminal_size()
 
             # Wait for session completion or shutdown signal
             await self._wait_for_completion()
@@ -158,13 +170,49 @@ class SessionManagerPlugin:
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
+        loop = asyncio.get_event_loop()
 
-        def signal_handler(signum: int, frame: Any) -> None:
-            self.logger.info(f"Received signal {signum}")
-            asyncio.create_task(self._initiate_shutdown())
+        def sigint_handler(signum: int, frame: Any) -> None:
+            # Forward Ctrl-C to remote instead of closing locally
+            self.logger.debug("SIGINT: forwarding to remote as ETX")
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                loop.create_task(
+                    self._current_session.data_channel.send_input_data(b"\x03")
+                )
+            else:
+                loop.create_task(self._initiate_shutdown())
 
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        def sigterm_handler(signum: int, frame: Any) -> None:
+            self.logger.info("SIGTERM: initiating shutdown")
+            loop.create_task(self._initiate_shutdown())
+
+        def sigwinch_handler(signum: int, frame: Any) -> None:
+            # On terminal resize, send updated size
+            loop.create_task(self._send_terminal_size_update())
+
+        signal.signal(signal.SIGINT, sigint_handler)
+        signal.signal(signal.SIGTERM, sigterm_handler)
+        if hasattr(signal, "SIGWINCH"):
+            signal.signal(signal.SIGWINCH, sigwinch_handler)
+
+    async def _send_initial_terminal_size(self) -> None:
+        await self._send_terminal_size_update()
+
+    async def _send_terminal_size_update(self) -> None:
+        try:
+            cols, rows = shutil.get_terminal_size(fallback=(80, 24))
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                await self._current_session.data_channel.send_terminal_size(cols, rows)
+        except Exception as e:
+            self.logger.debug(f"Failed to send terminal size: {e}")
 
     async def _initiate_shutdown(self) -> None:
         """Initiate graceful shutdown."""
@@ -189,6 +237,9 @@ class SessionManagerPlugin:
                     await stdin_task
                 except asyncio.CancelledError:
                     pass
+            # Restore terminal if modified
+            if sys.stdin.isatty():
+                self._restore_terminal()
 
     async def _handle_stdin_input(self) -> None:
         """Handle stdin input for interactive sessions."""
@@ -225,6 +276,31 @@ class SessionManagerPlugin:
                 self.logger.error(f"Error terminating session: {e}")
 
         self.logger.info("Cleanup completed")
+
+    def _enter_cbreak_noecho(self) -> None:
+        """Put terminal into cbreak mode and disable echo (like Go plugin)."""
+        try:
+            if not sys.stdin.isatty():
+                return
+            fd = sys.stdin.fileno()
+            self._orig_term_attrs = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            # Disable echo
+            attrs = termios.tcgetattr(fd)
+            attrs[3] = attrs[3] & ~termios.ECHO
+            termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
+            self.logger.debug("Terminal set to cbreak -echo")
+        except Exception as e:
+            self.logger.debug(f"Failed to set terminal mode: {e}")
+
+    def _restore_terminal(self) -> None:
+        """Restore terminal settings if changed."""
+        try:
+            if self._orig_term_attrs and sys.stdin.isatty():
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._orig_term_attrs)
+                self.logger.debug("Terminal settings restored")
+        except Exception as e:
+            self.logger.debug(f"Failed to restore terminal: {e}")
 
 
 # Click CLI interface with subcommands

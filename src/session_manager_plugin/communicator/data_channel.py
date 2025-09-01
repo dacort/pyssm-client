@@ -27,6 +27,8 @@ class SessionDataChannel(IDataChannel):
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
         self._initial_output_received = False
+        # Outbound input sequence number (SSM expects monotonically increasing values)
+        self._out_seq = 1
 
     async def open(self) -> bool:
         """Open the data channel connection."""
@@ -60,11 +62,14 @@ class SessionDataChannel(IDataChannel):
             raise RuntimeError("Data channel not open")
 
         try:
+            # Normalize line endings to match SSM expectations
+            normalized = self._normalize_input(data)
+
             # For debugging: log what we're sending
-            self.logger.debug(f"Sending {len(data)} bytes: {data[:50]}")
-            
-            # Format as AWS SSM input stream message (like Go implementation)
-            input_message = self._create_input_stream_message(data)
+            self.logger.debug(f"Sending {len(normalized)} bytes: {normalized[:50]}")
+
+            # Format as AWS SSM input stream message with correct payload type and sequence
+            input_message = self._create_input_stream_message(normalized)
             await self._channel.send_message(input_message)
             self.logger.debug(f"Sent {len(data)} bytes of input data as AWS SSM input stream message")
 
@@ -108,47 +113,60 @@ class SessionDataChannel(IDataChannel):
                             f"sequence={client_message.sequence_number} (expected={self._expected_sequence_number})"
                         )
                         
-                        # TEMPORARY: Process and acknowledge ALL messages regardless of sequence
-                        # This will help us isolate if the issue is sequence tracking vs acknowledgment format
-                        
                         message_processed = False
-                        
-                        # Handle shell output data
-                        if client_message.is_shell_output():
+
+                        # Handshake and control payloads
+                        if client_message.payload_type == PayloadType.HANDSHAKE_REQUEST:
+                            self._schedule_handshake_response(client_message)
+                            message_processed = True
+                        elif client_message.payload_type == PayloadType.HANDSHAKE_COMPLETE:
+                            # Optionally display customer message
+                            try:
+                                import json as _json
+                                payload = _json.loads(client_message.payload.decode('utf-8', errors='ignore'))
+                                cust_msg = payload.get('CustomerMessage') or payload.get('customerMessage')
+                                if cust_msg and self._input_handler:
+                                    self._input_handler((cust_msg + "\n").encode('utf-8'))
+                            except Exception as e:
+                                self.logger.debug(f"Failed to parse HandshakeComplete payload: {e}")
+                            message_processed = True
+                        elif client_message.payload_type == PayloadType.ENC_CHALLENGE_REQUEST:
+                            # Not supported; log only
+                            self.logger.info("Encryption challenge not supported; ignoring.")
+                            message_processed = True
+                        # Shell and stderr output
+                        elif client_message.is_shell_output():
                             shell_data = client_message.get_shell_data()
                             if shell_data and self._input_handler:
                                 # Send only the shell content as bytes
                                 self._input_handler(shell_data.encode('utf-8'))
-                                message_processed = True
-                                
-                                # EXPERIMENTAL: Send a simple command after first shell prompt
-                                if not self._initial_output_received:
-                                    self._initial_output_received = True
-                                    self.logger.debug("Sending initial echo command to test shell interaction")
-                                    self._schedule_shell_input(b"echo \"Hello from $HOME Python SSH\"\n")
-                                    
-                            elif shell_data:
-                                self.logger.debug(f"Shell output (no handler): {shell_data[:100]}")
-                                message_processed = True
+                            message_processed = True
                         else:
-                            # Handle other message types (handshakes, etc.)
-                            self.logger.debug(
-                                f"Non-shell message: type={client_message.message_type}, "
-                                f"payload_type={client_message.payload_type}"
-                            )
+                            # Other message types: acknowledge but do not display
                             message_processed = True
                         
                         # Handle AWS SSM sequence tracking properly
                         if message_processed:
-                            self._schedule_acknowledgment(client_message)
-                            
-                            # Update expected sequence based on what we received
-                            if client_message.sequence_number >= self._expected_sequence_number:
-                                # Update to next expected sequence
-                                self._expected_sequence_number = client_message.sequence_number + 1
-                                self.logger.debug(f"Updated expected sequence to {self._expected_sequence_number}")
-                            else:
-                                self.logger.debug(f"Received older sequence {client_message.sequence_number}, keeping expected at {self._expected_sequence_number}")
+                            # Only acknowledge non-ack messages
+                            if client_message.message_type != "acknowledge":
+                                self._schedule_acknowledgment(client_message)
+
+                            # Update expected sequence only for output stream messages
+                            if client_message.message_type == "output_stream_data":
+                                if client_message.sequence_number == self._expected_sequence_number:
+                                    self._expected_sequence_number += 1
+                                    self.logger.debug(
+                                        f"Updated expected sequence to {self._expected_sequence_number}"
+                                    )
+                                elif client_message.sequence_number > self._expected_sequence_number:
+                                    # Out-of-order; keep expected and rely on agent resends
+                                    self.logger.debug(
+                                        f"Received future sequence {client_message.sequence_number}, expected {self._expected_sequence_number}"
+                                    )
+                                else:
+                                    self.logger.debug(
+                                        f"Received older sequence {client_message.sequence_number}, keeping expected at {self._expected_sequence_number}"
+                                    )
                     else:
                         # Fallback for unparseable messages
                         self.logger.debug(f"Failed to parse binary message: {len(message.data)} bytes")
@@ -156,14 +174,9 @@ class SessionDataChannel(IDataChannel):
                             self._input_handler(message.data)
 
             elif message.message_type == MessageType.TEXT:
-                # Handle text messages (handshake responses, etc.)
+                # Text frames are control/handshake; do not print to user
                 if isinstance(message.data, str):
                     self.logger.debug(f"Text message: {message.data[:200]}...")
-                    
-                    # Convert text to bytes for consistent handling
-                    data = message.data.encode("utf-8")
-                    if self._input_handler:
-                        self._input_handler(data)
 
         except Exception as e:
             self.logger.error(f"Error handling message: {e}")
@@ -194,9 +207,9 @@ class SessionDataChannel(IDataChannel):
         try:
             # Create handshake message as per AWS SSM protocol
             handshake_message = {
-                "MessageSchemaVersion": "1.0",
+                "MessageSchemaVersion": 1,
                 "RequestId": str(uuid.uuid4()),
-                "TokenValue": self._config.token
+                "TokenValue": self._config.token,
             }
             
             # Send as JSON text message
@@ -217,6 +230,13 @@ class SessionDataChannel(IDataChannel):
             asyncio.create_task(self._send_acknowledgment(original_message))
         except Exception as e:
             self.logger.error(f"Failed to schedule acknowledgment: {e}")
+
+    def _schedule_handshake_response(self, original_message) -> None:
+        import asyncio
+        try:
+            asyncio.create_task(self._send_handshake_response(original_message))
+        except Exception as e:
+            self.logger.error(f"Failed to schedule handshake response: {e}")
     
     async def _send_acknowledgment(self, original_message) -> None:
         """Send acknowledgment message for received message."""
@@ -238,24 +258,65 @@ class SessionDataChannel(IDataChannel):
         except Exception as e:
             self.logger.error(f"Failed to send acknowledgment: {e}")
             # Don't raise - acknowledgment failure shouldn't stop message processing
+
+    async def _send_handshake_response(self, original_message) -> None:
+        """Send HandshakeResponse payload for a HandshakeRequest."""
+        try:
+            import json as _json
+
+            # Default response with no processed actions
+            response = {
+                "ClientVersion": "python-session-manager-plugin/0.1.0",
+                "ProcessedClientActions": [],
+                "Errors": [],
+            }
+
+            # Attempt to parse request and respond per action
+            try:
+                request = _json.loads(original_message.payload.decode('utf-8', errors='ignore'))
+                actions = request.get("RequestedClientActions", [])
+                for action in actions:
+                    atype = action.get("ActionType")
+                    processed = {"ActionType": atype, "ActionStatus": 1}  # Success
+                    if atype == "SessionType":
+                        # Echo back minimal result
+                        processed["ActionResult"] = action.get("ActionParameters")
+                    elif atype == "KMSEncryption":
+                        processed["ActionStatus"] = 3  # Unsupported
+                        processed["Error"] = "KMSEncryption not supported in Python client"
+                    else:
+                        processed["ActionStatus"] = 3
+                        processed["Error"] = f"Unsupported action {atype}"
+                    response["ProcessedClientActions"].append(processed)
+            except Exception as e:
+                self.logger.debug(f"Failed to parse HandshakeRequest payload: {e}")
+
+            payload = _json.dumps(response).encode('utf-8')
+            msg = self._serialize_input_message_with_payload_type(payload, PayloadType.HANDSHAKE_RESPONSE)
+            if self._channel:
+                await self._channel.send_message(msg)
+                self.logger.debug("Sent HandshakeResponse")
+        except Exception as e:
+            self.logger.error(f"Failed to send HandshakeResponse: {e}")
     
     def _serialize_input_message_with_payload_type(self, input_data: bytes, payload_type: int) -> bytes:
         """Serialize input message with specific payload type."""
         import time
         import uuid
         
-        # Convert \n to \r for shell compatibility (like Go implementation)
-        if input_data == b'\n':
-            input_data = b'\r'
-            
+        # Note: line ending normalization handled earlier
         message_uuid = uuid.uuid4()
         created_date = int(time.time() * 1000)
-        
+
+        # Capture current outbound sequence and then advance
+        seq = self._out_seq
+        self._out_seq += 1
+
         return serialize_client_message_with_payload_type(
             message_type="input_stream_data", 
             schema_version=1,
             created_date=created_date,
-            sequence_number=0,  # TODO: Should track input sequence
+            sequence_number=seq,
             flags=0,
             message_id=message_uuid.bytes,
             payload_type=payload_type,
@@ -263,34 +324,30 @@ class SessionDataChannel(IDataChannel):
         )
     
     def _schedule_shell_input(self, data: bytes) -> None:
-        """Schedule shell input to be sent asynchronously."""
-        import asyncio
-        try:
-            asyncio.create_task(self._send_shell_input(data))
-        except Exception as e:
-            self.logger.error(f"Failed to schedule shell input: {e}")
-    
-    async def _send_shell_input(self, data: bytes) -> None:
-        """Send input data to the shell."""
-        try:
-            await self.send_input_data(data)
-            self.logger.debug(f"Sent shell input: {data[:50]}")
-        except Exception as e:
-            self.logger.error(f"Failed to send shell input: {e}")
+        """Deprecated: previously used for experimental auto-input; now a no-op."""
+        self.logger.debug("_schedule_shell_input is deprecated and will be ignored.")
     
     def _create_input_stream_message(self, input_data: bytes) -> bytes:
-        """Create AWS SSM input stream message."""
-        import time
-        import uuid
-        
-        # Convert \n to \r for shell compatibility (like Go implementation)
-        if input_data == b'\n':
-            input_data = b'\r'
-        
-        # Create input stream message
-        message_uuid = uuid.uuid4()
-        created_date = int(time.time() * 1000)
-        
-        # Need to create proper binary format with payload type
-        # For now, create a simpler version that sets payload_type=1 for Output
+        """Create AWS SSM input stream message for keyboard input."""
+        # Use OUTPUT payload type for normal keyboard input (matches Go plugin)
         return self._serialize_input_message_with_payload_type(input_data, PayloadType.OUTPUT)
+
+    def _normalize_input(self, data: bytes) -> bytes:
+        """Normalize line endings for SSM: map LF and CRLF to CR."""
+        # Replace CRLF with CR
+        data = data.replace(b"\r\n", b"\r")
+        # Replace lone LF with CR
+        data = data.replace(b"\n", b"\r")
+        return data
+
+    async def send_terminal_size(self, cols: int, rows: int) -> None:
+        """Send terminal size update using SIZE payload type."""
+        if not self.is_open or self._channel is None:
+            return
+        try:
+            payload = json.dumps({"cols": int(cols), "rows": int(rows)}).encode("utf-8")
+            msg = self._serialize_input_message_with_payload_type(payload, PayloadType.SIZE)
+            await self._channel.send_message(msg)
+            self.logger.debug(f"Sent terminal size: cols={cols}, rows={rows}")
+        except Exception as e:
+            self.logger.error(f"Failed to send terminal size: {e}")
