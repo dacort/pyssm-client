@@ -18,6 +18,7 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
    - Update data channel to accept client info and include it in the initial text handshake JSON.
    - Wire the CLI to pass the generated client id into the data channel before it opens.
    - Verification: Start a session; confirm handshake still succeeds and interactivity works (type `echo ok`).
+   - Status: DONE (verified)
 
 2. Honor start/pause publication for input
    - Handle `start_publication` / `pause_publication` message types; toggle an `input_allowed` flag; skip sending input when paused.
@@ -35,4 +36,3 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 
 - After each step is implemented, the assistant will pause and ask you to verify. Once you confirm it works, we will check off the item here and proceed to the next.
 - If verification fails, we will iterate on that step until it passes before moving on.
-

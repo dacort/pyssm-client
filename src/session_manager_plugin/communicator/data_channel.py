@@ -33,6 +33,8 @@ class SessionDataChannel(IDataChannel):
         # Client metadata for handshake
         self._client_id: Optional[str] = None
         self._client_version: str = "python-session-manager-plugin/0.1.0"
+        # Flow control: input gating
+        self._input_allowed: bool = True
 
     async def open(self) -> bool:
         """Open the data channel connection."""
@@ -73,6 +75,9 @@ class SessionDataChannel(IDataChannel):
             raise RuntimeError("Data channel not open")
 
         try:
+            if not self._input_allowed:
+                self.logger.debug("Input paused by remote (pause_publication); dropping input")
+                return
             # Normalize line endings to match SSM expectations
             normalized = self._normalize_input(data)
 
@@ -167,20 +172,28 @@ class SessionDataChannel(IDataChannel):
                                 except Exception:
                                     pass
                             message_processed = True
+                        elif client_message.message_type.strip() == "start_publication":
+                            self._input_allowed = True
+                            self.logger.debug("Received start_publication; input allowed")
+                            message_processed = True
+                        elif client_message.message_type.strip() == "pause_publication":
+                            self._input_allowed = False
+                            self.logger.debug("Received pause_publication; input paused")
+                            message_processed = True
                         elif client_message.is_shell_output():
                             shell_data = client_message.get_shell_data()
                             if shell_data and self._input_handler:
                                 # Send only the shell content as bytes
                                 self._input_handler(shell_data.encode('utf-8'))
-                            message_processed = True
-                        else:
-                            # Other message types: acknowledge but do not display
-                            message_processed = True
+                                message_processed = True
+                            else:
+                                # Other message types: acknowledge but do not display
+                                message_processed = True
                         
                         # Handle AWS SSM sequence tracking properly
                         if message_processed:
-                            # Only acknowledge applicable messages (not ack or channel_closed)
-                            if client_message.message_type not in ("acknowledge", "channel_closed"):
+                            # Only acknowledge applicable messages (not ack or channel_closed or start/pause publication)
+                            if client_message.message_type not in ("acknowledge", "channel_closed", "start_publication", "pause_publication"):
                                 self._schedule_acknowledgment(client_message)
 
                             # Update expected sequence only for output stream messages
