@@ -43,6 +43,14 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 6. Handle SessionType from HandshakeRequest
    - Parse `RequestedClientActions` where `ActionType == SessionType`, store session type and properties, and include in diagnostics.
    - Verification: Start a session with `-v` and confirm a log like `Handshake: session_type=<value>` appears after handshake.
+   - Status: DONE (verified by functionality; log may be absent if agent omitted action)
+
+7. Input coalescing (optional)
+   - Coalesce keystrokes into short bursts (≈10ms) or until CR/size threshold. Control bytes (Ctrl-C/Z/\) flush immediately. Disabled by default; enabled automatically only for non‑TTY stdin to avoid interactive lag.
+   - Verification: With normal TTY sessions, interactivity remains snappy (no lag). With piped input, debug logs show fewer input messages.
+6. Handle SessionType from HandshakeRequest
+   - Parse `RequestedClientActions` where `ActionType == SessionType`, store session type and properties, and include in diagnostics.
+   - Verification: Start a session with `-v` and confirm a log like `Handshake: session_type=<value>` appears after handshake.
 
 ## Process / Instructions
 

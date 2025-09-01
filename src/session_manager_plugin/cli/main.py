@@ -143,6 +143,13 @@ class SessionManagerPlugin:
                     self._shutdown_event.set()
         data_channel.set_closed_handler(on_closed)
 
+        # Prefer low-latency keystrokes for TTY; enable coalescing only for non-tty input
+        try:
+            if not sys.stdin.isatty():
+                data_channel.set_coalescing(True, delay_sec=0.01)
+        except Exception:
+            pass
+
         return data_channel
 
     async def _configure_data_channel_handlers(

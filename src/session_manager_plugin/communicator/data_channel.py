@@ -38,6 +38,11 @@ class SessionDataChannel(IDataChannel):
         # Handshake session metadata
         self._session_type: Optional[str] = None
         self._session_properties: Optional[dict] = None
+        # Input coalescing (disabled by default; better for TTY interactivity)
+        self._coalesce_enabled: bool = False
+        self._input_buffer = bytearray()
+        self._flush_task: Optional[asyncio.Task] = None  # type: ignore[name-defined]
+        self._flush_delay_sec: float = 0.01
 
     async def open(self) -> bool:
         """Open the data channel connection."""
@@ -84,17 +89,65 @@ class SessionDataChannel(IDataChannel):
             # Normalize line endings to match SSM expectations
             normalized = self._normalize_input(data)
 
-            # For debugging: log what we're sending
-            self.logger.debug(f"Sending {len(normalized)} bytes: {normalized[:50]}")
+            # Control bytes should be flushed immediately
+            control_bytes = {b"\x03", b"\x1a", b"\x1c"}
+            if self._coalesce_enabled:
+                # If control byte, flush buffer then send immediately
+                if len(normalized) == 1 and normalized in control_bytes:
+                    await self._flush_input_buffer()
+                    await self._send_input_now(normalized)
+                    return
 
-            # Format as AWS SSM input stream message with correct payload type and sequence
-            input_message = self._create_input_stream_message(normalized)
-            await self._channel.send_message(input_message)
-            self.logger.debug(f"Sent {len(data)} bytes of input data as AWS SSM input stream message")
+                # Append to buffer
+                self._input_buffer.extend(normalized)
+
+                # If newline (CR) present or buffer large, flush immediately
+                if b"\r" in normalized or len(self._input_buffer) >= 512:
+                    await self._flush_input_buffer()
+                    return
+
+                # Otherwise, debounce flush
+                self._schedule_flush()
+                return
+
+            # No coalescing: send directly
+            await self._send_input_now(normalized)
 
         except Exception as e:
             self.logger.error(f"Failed to send input data: {e}")
             raise
+
+    def _schedule_flush(self) -> None:
+        try:
+            import asyncio as _asyncio
+            if self._flush_task and not self._flush_task.done():
+                self._flush_task.cancel()
+            async def _wait_and_flush():
+                try:
+                    await _asyncio.sleep(self._flush_delay_sec)
+                    await self._flush_input_buffer()
+                except _asyncio.CancelledError:
+                    pass
+            self._flush_task = _asyncio.create_task(_wait_and_flush())
+        except Exception as e:
+            self.logger.debug(f"Failed to schedule flush: {e}")
+
+    async def _flush_input_buffer(self) -> None:
+        if not self._input_buffer:
+            return
+        buf = bytes(self._input_buffer)
+        self._input_buffer.clear()
+        await self._send_input_now(buf)
+
+    async def _send_input_now(self, payload: bytes) -> None:
+        # For debugging: log what we're sending
+        self.logger.debug(f"Sending {len(payload)} bytes: {payload[:50]}")
+        # Format as AWS SSM input stream message with correct payload type and sequence
+        if not self.is_open or self._channel is None:
+            return
+        input_message = self._create_input_stream_message(payload)
+        await self._channel.send_message(input_message)
+        self.logger.debug(f"Sent {len(payload)} bytes of input data as AWS SSM input stream message")
 
     async def close(self) -> None:
         """Close the data channel."""
@@ -102,6 +155,12 @@ class SessionDataChannel(IDataChannel):
             await self._channel.close()
             self._channel = None
             self.logger.info("Data channel closed")
+        # Cancel pending flush
+        try:
+            if self._flush_task and not self._flush_task.done():
+                self._flush_task.cancel()
+        except Exception:
+            pass
 
     @property
     def is_open(self) -> bool:
@@ -119,6 +178,12 @@ class SessionDataChannel(IDataChannel):
     def set_closed_handler(self, handler: Callable[[], None]) -> None:
         """Set handler called when the channel closes or errors."""
         self._closed_handler = handler
+
+    def set_coalescing(self, enabled: bool, delay_sec: Optional[float] = None) -> None:
+        """Configure input coalescing behavior."""
+        self._coalesce_enabled = enabled
+        if delay_sec is not None:
+            self._flush_delay_sec = max(0.0, float(delay_sec))
 
     def _handle_message(self, message: WebSocketMessage) -> None:
         """Handle incoming WebSocket message."""
