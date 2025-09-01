@@ -31,6 +31,9 @@ class SessionManagerPlugin:
         self._shutdown_event = asyncio.Event()
         self._orig_term_attrs: Optional[list[int]] = None
         self._resize_task: Optional[asyncio.Task] = None
+        # Input coalescing configuration (managed via CLI)
+        self._coalesce_mode: str = "auto"  # "auto" | "on" | "off"
+        self._coalesce_delay_ms: float = 10.0
 
     async def run_session(self, args: ConnectArguments) -> int:
         """Run a session with the provided arguments."""
@@ -141,12 +144,22 @@ class SessionManagerPlugin:
                     self._shutdown_event.set()
         data_channel.set_closed_handler(on_closed)
 
-        # Prefer low-latency keystrokes for TTY; enable coalescing only for non-tty input
+        # Configure coalescing based on CLI setting
         try:
-            if not sys.stdin.isatty():
-                data_channel.set_coalescing(True, delay_sec=0.01)
-        except Exception:
-            pass
+            mode = getattr(self, "_coalesce_mode", "auto").lower()
+            delay_sec = max(0.0, float(getattr(self, "_coalesce_delay_ms", 10.0)) / 1000.0)
+            if mode == "on":
+                data_channel.set_coalescing(True, delay_sec=delay_sec)
+                self.logger.debug(f"Input coalescing: enabled (delay={delay_sec}s)")
+            elif mode == "off":
+                data_channel.set_coalescing(False)
+                self.logger.debug("Input coalescing: disabled")
+            else:  # auto
+                enabled = not sys.stdin.isatty()
+                data_channel.set_coalescing(enabled, delay_sec=delay_sec)
+                self.logger.debug(f"Input coalescing: auto -> {'enabled' if enabled else 'disabled'} (delay={delay_sec}s)")
+        except Exception as e:
+            self.logger.debug(f"Failed to configure coalescing: {e}")
 
         return data_channel
 
@@ -425,12 +438,34 @@ class SessionManagerPlugin:
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Verbose logging")
 @click.option("--log-file", help="Log file path")
+@click.option(
+    "--coalesce-input",
+    type=click.Choice(["auto", "on", "off"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Input coalescing mode: auto (default), on, or off",
+)
+@click.option(
+    "--coalesce-delay-ms",
+    type=float,
+    default=10.0,
+    show_default=True,
+    help="Coalescing delay in milliseconds when enabled",
+)
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool, log_file: Optional[str]) -> None:
+def cli(
+    ctx: click.Context,
+    verbose: bool,
+    log_file: Optional[str],
+    coalesce_input: str,
+    coalesce_delay_ms: float,
+) -> None:
     """AWS Session Manager Plugin - Python implementation."""
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["log_file"] = log_file
+    ctx.obj["coalesce_input"] = coalesce_input.lower()
+    ctx.obj["coalesce_delay_ms"] = coalesce_delay_ms
 
     # Set up logging
     log_level = logging.DEBUG if verbose else logging.INFO
@@ -476,6 +511,9 @@ def connect(ctx: click.Context, json_input: Optional[str], **kwargs: Any) -> Non
 
         # Run the session
         plugin = SessionManagerPlugin()
+        # Configure input coalescing
+        plugin._coalesce_mode = ctx.obj.get("coalesce_input", "auto")  # type: ignore[attr-defined]
+        plugin._coalesce_delay_ms = float(ctx.obj.get("coalesce_delay_ms", 10.0))  # type: ignore[attr-defined]
         exit_code = asyncio.run(plugin.run_session(args))
         sys.exit(exit_code)
 
@@ -558,6 +596,9 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 
         # Run the session
         plugin = SessionManagerPlugin()
+        # Configure input coalescing
+        plugin._coalesce_mode = ctx.obj.get("coalesce_input", "auto")  # type: ignore[attr-defined]
+        plugin._coalesce_delay_ms = float(ctx.obj.get("coalesce_delay_ms", 10.0))  # type: ignore[attr-defined]
         exit_code = asyncio.run(plugin.run_session(connect_args))
         sys.exit(exit_code)
 
