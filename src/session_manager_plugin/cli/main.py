@@ -3,8 +3,6 @@
 import asyncio
 import os
 import shutil
-import struct
-import fcntl
 import termios
 import tty
 import json

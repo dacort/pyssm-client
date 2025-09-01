@@ -8,7 +8,18 @@ from typing import Any, Callable, Dict, Optional
 
 from ..session.protocols import IDataChannel
 from ..utils.logging import get_logger
-from .protocol import parse_client_message, create_acknowledge_message, PayloadType, serialize_client_message_with_payload_type
+from .protocol import (
+    parse_client_message,
+    create_acknowledge_message,
+    PayloadType,
+    serialize_client_message_with_payload_type,
+    MESSAGE_INPUT_STREAM,
+    MESSAGE_OUTPUT_STREAM,
+    MESSAGE_ACKNOWLEDGE,
+    MESSAGE_CHANNEL_CLOSED,
+    MESSAGE_START_PUBLICATION,
+    MESSAGE_PAUSE_PUBLICATION,
+)
 from .types import ConnectionState, MessageType, WebSocketConfig, WebSocketMessage
 from .websocket_channel import WebSocketChannel
 
@@ -228,7 +239,7 @@ class SessionDataChannel(IDataChannel):
                             self.logger.info("Encryption challenge not supported; ignoring.")
                             message_processed = True
                         # Shell and stderr output
-                        elif client_message.message_type.strip() == "channel_closed":
+                        elif client_message.message_type.strip() == MESSAGE_CHANNEL_CLOSED:
                             # Friendly notice then close
                             try:
                                 import json as _json
@@ -248,11 +259,11 @@ class SessionDataChannel(IDataChannel):
                             # Trigger close once
                             self._trigger_closed()
                             message_processed = True
-                        elif client_message.message_type.strip() == "start_publication":
+                        elif client_message.message_type.strip() == MESSAGE_START_PUBLICATION:
                             self._input_allowed = True
                             self.logger.debug("Received start_publication; input allowed")
                             message_processed = True
-                        elif client_message.message_type.strip() == "pause_publication":
+                        elif client_message.message_type.strip() == MESSAGE_PAUSE_PUBLICATION:
                             self._input_allowed = False
                             self.logger.debug("Received pause_publication; input paused")
                             message_processed = True
@@ -275,11 +286,11 @@ class SessionDataChannel(IDataChannel):
                         # Handle AWS SSM sequence tracking properly
                         if message_processed:
                             # Only acknowledge applicable messages (not ack or channel_closed or start/pause publication)
-                            if client_message.message_type not in ("acknowledge", "channel_closed", "start_publication", "pause_publication"):
+                            if client_message.message_type not in (MESSAGE_ACKNOWLEDGE, MESSAGE_CHANNEL_CLOSED, MESSAGE_START_PUBLICATION, MESSAGE_PAUSE_PUBLICATION):
                                 self._schedule_acknowledgment(client_message)
 
                             # Update expected sequence only for output stream messages
-                            if client_message.message_type == "output_stream_data":
+                            if client_message.message_type == MESSAGE_OUTPUT_STREAM:
                                 if client_message.sequence_number == self._expected_sequence_number:
                                     self._expected_sequence_number += 1
                                     self.logger.debug(
@@ -486,7 +497,7 @@ class SessionDataChannel(IDataChannel):
         self._out_seq += 1
 
         return serialize_client_message_with_payload_type(
-            message_type="input_stream_data", 
+            message_type=MESSAGE_INPUT_STREAM, 
             schema_version=1,
             created_date=created_date,
             sequence_number=seq,
