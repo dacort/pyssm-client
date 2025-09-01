@@ -211,10 +211,39 @@ class SessionManagerPlugin:
             # On terminal resize, send updated size
             loop.create_task(self._send_terminal_size_update())
 
+        def sigquit_handler(signum: int, frame: Any) -> None:
+            # Forward Ctrl-\ (FS) 0x1c
+            self.logger.debug("SIGQUIT: forwarding to remote as FS (0x1c)")
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                loop.create_task(
+                    self._current_session.data_channel.send_input_data(b"\x1c")
+                )
+
+        def sigtstp_handler(signum: int, frame: Any) -> None:
+            # Forward Ctrl-Z (SUB) 0x1a
+            self.logger.debug("SIGTSTP: forwarding to remote as SUB (0x1a)")
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                loop.create_task(
+                    self._current_session.data_channel.send_input_data(b"\x1a")
+                )
+
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigterm_handler)
         if hasattr(signal, "SIGWINCH"):
             signal.signal(signal.SIGWINCH, sigwinch_handler)
+        # Optional unix-only signals if present
+        if hasattr(signal, "SIGQUIT"):
+            signal.signal(signal.SIGQUIT, sigquit_handler)
+        if hasattr(signal, "SIGTSTP"):
+            signal.signal(signal.SIGTSTP, sigtstp_handler)
 
     async def _send_initial_terminal_size(self) -> None:
         await self._send_terminal_size_update()
@@ -336,7 +365,9 @@ class SessionManagerPlugin:
             tty.setcbreak(fd)
             # Disable echo
             attrs = termios.tcgetattr(fd)
+            # lflag (index 3): turn off ECHO and ISIG so Ctrl-C/Z/\ are not handled locally
             attrs[3] = attrs[3] & ~termios.ECHO
+            attrs[3] = attrs[3] & ~termios.ISIG
             termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
             self.logger.debug("Terminal set to cbreak -echo")
         except Exception as e:
