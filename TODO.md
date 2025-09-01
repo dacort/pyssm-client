@@ -53,6 +53,7 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 8. Out-of-order output buffering (optional)
    - Buffer future `output_stream_data` frames by sequence and print them in order starting from the expected sequence; still ack on receipt.
    - Verification: No functional change under normal conditions. Under out-of-order delivery, output should appear correctly ordered.
+   - Status: DONE (verified)
 6. Handle SessionType from HandshakeRequest
    - Parse `RequestedClientActions` where `ActionType == SessionType`, store session type and properties, and include in diagnostics.
    - Verification: Start a session with `-v` and confirm a log like `Handshake: session_type=<value>` appears after handshake.
