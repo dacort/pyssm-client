@@ -128,6 +128,11 @@ class Session(ISession):
             ),
         )
 
+    @property
+    def client_id(self) -> str:
+        """Expose client id from client config."""
+        return self._client_config.client_id
+
     async def _setup_session_handlers(self) -> None:
         """Set up session-specific message handlers."""
         session_type = self._client_config.session_type

@@ -66,6 +66,11 @@ class SessionManagerPlugin:
             )
 
             # Set up data channel for session BEFORE executing
+            # Also supply client metadata for handshake
+            try:
+                data_channel.set_client_info(self._current_session.client_id, "python-session-manager-plugin/0.1.0")
+            except Exception:
+                pass
             self._current_session.set_data_channel(data_channel)
             
             # Now execute the session with data channel properly set

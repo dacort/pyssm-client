@@ -30,6 +30,9 @@ class SessionDataChannel(IDataChannel):
         self._initial_output_received = False
         # Outbound input sequence number (SSM expects monotonically increasing values starting at 0)
         self._out_seq = 0
+        # Client metadata for handshake
+        self._client_id: Optional[str] = None
+        self._client_version: str = "python-session-manager-plugin/0.1.0"
 
     async def open(self) -> bool:
         """Open the data channel connection."""
@@ -56,6 +59,13 @@ class SessionDataChannel(IDataChannel):
         except Exception as e:
             self.logger.error(f"Error opening data channel: {e}")
             return False
+
+    def set_client_info(self, client_id: Optional[str], client_version: Optional[str] = None) -> None:
+        """Set client metadata used during handshake."""
+        if client_id:
+            self._client_id = client_id
+        if client_version:
+            self._client_version = client_version
 
     async def send_input_data(self, data: bytes) -> None:
         """Send input data through the channel."""
@@ -238,6 +248,9 @@ class SessionDataChannel(IDataChannel):
                 "MessageSchemaVersion": 1,
                 "RequestId": str(uuid.uuid4()),
                 "TokenValue": self._config.token,
+                # Include optional fields when available (matches Go behavior)
+                "ClientId": self._client_id or "",
+                "ClientVersion": self._client_version,
             }
             
             # Send as JSON text message
