@@ -1,6 +1,12 @@
 """Main CLI interface for AWS Session Manager Plugin."""
 
 import asyncio
+import os
+import shutil
+import struct
+import fcntl
+import termios
+import tty
 import json
 import logging
 import signal
@@ -25,6 +31,8 @@ class SessionManagerPlugin:
         self._session_handler = SessionHandler()
         self._current_session: Optional[Any] = None
         self._shutdown_event = asyncio.Event()
+        self._orig_term_attrs: Optional[list[int]] = None
+        self._resize_task: Optional[asyncio.Task] = None
 
     async def run_session(self, args: ConnectArguments) -> int:
         """Run a session with the provided arguments."""
@@ -59,6 +67,11 @@ class SessionManagerPlugin:
             )
 
             # Set up data channel for session BEFORE executing
+            # Also supply client metadata for handshake
+            try:
+                data_channel.set_client_info(self._current_session.client_id, "python-session-manager-plugin/0.1.0")
+            except Exception:
+                pass
             self._current_session.set_data_channel(data_channel)
             
             # Now execute the session with data channel properly set
@@ -68,6 +81,12 @@ class SessionManagerPlugin:
             self._setup_signal_handlers()
 
             self.logger.info(f"Session {args.session_id} started successfully")
+
+            # If interactive TTY, configure terminal and send initial size
+            if sys.stdin.isatty():
+                self._enter_cbreak_noecho()
+                await self._send_initial_terminal_size()
+                self._start_resize_heartbeat()
 
             # Wait for session completion or shutdown signal
             await self._wait_for_completion()
@@ -114,6 +133,23 @@ class SessionManagerPlugin:
         # Set up input/output handlers for different session types
         await self._configure_data_channel_handlers(data_channel, args)
 
+        # Ensure we shutdown when the data channel closes
+        def on_closed() -> None:
+            try:
+                asyncio.get_event_loop().create_task(self._initiate_shutdown())
+            except RuntimeError:
+                # If no running loop, fall back to setting the event synchronously
+                if not self._shutdown_event.is_set():
+                    self._shutdown_event.set()
+        data_channel.set_closed_handler(on_closed)
+
+        # Prefer low-latency keystrokes for TTY; enable coalescing only for non-tty input
+        try:
+            if not sys.stdin.isatty():
+                data_channel.set_coalescing(True, delay_sec=0.01)
+        except Exception:
+            pass
+
         return data_channel
 
     async def _configure_data_channel_handlers(
@@ -158,37 +194,120 @@ class SessionManagerPlugin:
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
+        loop = asyncio.get_event_loop()
 
-        def signal_handler(signum: int, frame: Any) -> None:
-            self.logger.info(f"Received signal {signum}")
-            asyncio.create_task(self._initiate_shutdown())
+        def sigint_handler(signum: int, frame: Any) -> None:
+            # Forward Ctrl-C to remote instead of closing locally
+            self.logger.debug("SIGINT: forwarding to remote as ETX")
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                loop.create_task(
+                    self._current_session.data_channel.send_input_data(b"\x03")
+                )
+            else:
+                loop.create_task(self._initiate_shutdown())
 
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        def sigterm_handler(signum: int, frame: Any) -> None:
+            self.logger.info("SIGTERM: initiating shutdown")
+            loop.create_task(self._initiate_shutdown())
+
+        def sigwinch_handler(signum: int, frame: Any) -> None:
+            # On terminal resize, send updated size
+            loop.create_task(self._send_terminal_size_update())
+
+        def sigquit_handler(signum: int, frame: Any) -> None:
+            # Forward Ctrl-\ (FS) 0x1c
+            self.logger.debug("SIGQUIT: forwarding to remote as FS (0x1c)")
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                loop.create_task(
+                    self._current_session.data_channel.send_input_data(b"\x1c")
+                )
+
+        def sigtstp_handler(signum: int, frame: Any) -> None:
+            # Forward Ctrl-Z (SUB) 0x1a
+            self.logger.debug("SIGTSTP: forwarding to remote as SUB (0x1a)")
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                loop.create_task(
+                    self._current_session.data_channel.send_input_data(b"\x1a")
+                )
+
+        signal.signal(signal.SIGINT, sigint_handler)
+        signal.signal(signal.SIGTERM, sigterm_handler)
+        if hasattr(signal, "SIGWINCH"):
+            signal.signal(signal.SIGWINCH, sigwinch_handler)
+        # Optional unix-only signals if present
+        if hasattr(signal, "SIGQUIT"):
+            signal.signal(signal.SIGQUIT, sigquit_handler)
+        if hasattr(signal, "SIGTSTP"):
+            signal.signal(signal.SIGTSTP, sigtstp_handler)
+
+    async def _send_initial_terminal_size(self) -> None:
+        await self._send_terminal_size_update()
+
+    async def _send_terminal_size_update(self) -> None:
+        try:
+            cols, rows = shutil.get_terminal_size(fallback=(80, 24))
+            if (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
+                await self._current_session.data_channel.send_terminal_size(cols, rows)
+        except Exception as e:
+            self.logger.debug(f"Failed to send terminal size: {e}")
 
     async def _initiate_shutdown(self) -> None:
         """Initiate graceful shutdown."""
-        self.logger.info("Initiating shutdown...")
-        self._shutdown_event.set()
+        if not self._shutdown_event.is_set():
+            self.logger.info("Initiating shutdown...")
+            self._shutdown_event.set()
 
     async def _wait_for_completion(self) -> None:
         """Wait for session completion or shutdown signal."""
         # Set up stdin reader for interactive sessions
+        loop = asyncio.get_event_loop()
+        stdin_task = None
+        stdin_fd = None
         if sys.stdin.isatty():
-            stdin_task = asyncio.create_task(self._handle_stdin_input())
-        else:
-            stdin_task = None
-
+            try:
+                stdin_fd = sys.stdin.fileno()
+                loop.add_reader(stdin_fd, self._on_stdin_ready)
+                self.logger.debug("Registered stdin reader")
+            except Exception as e:
+                self.logger.debug(f"Failed to add_reader for stdin: {e}; falling back to thread reader")
+                stdin_task = asyncio.create_task(self._handle_stdin_input())
+        
         try:
             # Wait for shutdown signal
             await self._shutdown_event.wait()
         finally:
+            if stdin_fd is not None:
+                try:
+                    loop.remove_reader(stdin_fd)
+                except Exception:
+                    pass
+            # Stop resize heartbeat
+            await self._stop_resize_heartbeat()
             if stdin_task:
                 stdin_task.cancel()
                 try:
                     await stdin_task
                 except asyncio.CancelledError:
                     pass
+            # Restore terminal if modified
+            if sys.stdin.isatty():
+                self._restore_terminal()
 
     async def _handle_stdin_input(self) -> None:
         """Handle stdin input for interactive sessions."""
@@ -216,6 +335,24 @@ class SessionManagerPlugin:
         finally:
             await self._initiate_shutdown()
 
+    def _on_stdin_ready(self) -> None:
+        """Callback when stdin has data; reads and forwards to data channel."""
+        try:
+            if not (self._current_session and self._current_session.data_channel and self._current_session.data_channel.is_open):
+                return
+            fd = sys.stdin.fileno()
+            # Read whatever is available up to 1024 bytes
+            data = os.read(fd, 1024)
+            if not data:
+                # EOF
+                asyncio.get_event_loop().create_task(self._initiate_shutdown())
+                return
+            asyncio.get_event_loop().create_task(
+                self._current_session.data_channel.send_input_data(data)
+            )
+        except Exception as e:
+            self.logger.error(f"stdin read error: {e}")
+
     async def _cleanup(self) -> None:
         """Clean up resources."""
         if self._current_session:
@@ -225,6 +362,65 @@ class SessionManagerPlugin:
                 self.logger.error(f"Error terminating session: {e}")
 
         self.logger.info("Cleanup completed")
+
+    def _enter_cbreak_noecho(self) -> None:
+        """Put terminal into cbreak mode and disable echo (like Go plugin)."""
+        try:
+            if not sys.stdin.isatty():
+                return
+            fd = sys.stdin.fileno()
+            self._orig_term_attrs = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            # Disable echo
+            attrs = termios.tcgetattr(fd)
+            # lflag (index 3): turn off ECHO and ISIG so Ctrl-C/Z/\ are not handled locally
+            attrs[3] = attrs[3] & ~termios.ECHO
+            attrs[3] = attrs[3] & ~termios.ISIG
+            termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
+            self.logger.debug("Terminal set to cbreak -echo")
+        except Exception as e:
+            self.logger.debug(f"Failed to set terminal mode: {e}")
+
+    def _restore_terminal(self) -> None:
+        """Restore terminal settings if changed."""
+        try:
+            if self._orig_term_attrs and sys.stdin.isatty():
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._orig_term_attrs)
+                self.logger.debug("Terminal settings restored")
+        except Exception as e:
+            self.logger.debug(f"Failed to restore terminal: {e}")
+
+    def _start_resize_heartbeat(self) -> None:
+        """Start periodic terminal size updates (every 500ms)."""
+        if self._resize_task is not None and not self._resize_task.done():
+            return
+        async def _loop():
+            try:
+                while not self._shutdown_event.is_set():
+                    try:
+                        cols, rows = shutil.get_terminal_size(fallback=(80, 24))
+                        if (
+                            self._current_session
+                            and self._current_session.data_channel
+                            and self._current_session.data_channel.is_open
+                        ):
+                            await self._current_session.data_channel.send_terminal_size(cols, rows)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                pass
+        self._resize_task = asyncio.create_task(_loop())
+
+    async def _stop_resize_heartbeat(self) -> None:
+        """Stop periodic terminal size updates."""
+        if self._resize_task and not self._resize_task.done():
+            self._resize_task.cancel()
+            try:
+                await self._resize_task
+            except asyncio.CancelledError:
+                pass
+        self._resize_task = None
 
 
 # Click CLI interface with subcommands
