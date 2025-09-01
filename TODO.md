@@ -99,6 +99,7 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 
 8) Tests coverage additions
    - Add unit tests for ack UUID layout/digest and out-of-order buffering.
+   - Status: PARTIAL (ack format + out-of-order buffering added)
 
 9) Logging tuning
    - Normalize log levels; add a concise handshake summary (agent_version, session_type, client_version) and keep per-frame details at DEBUG.
