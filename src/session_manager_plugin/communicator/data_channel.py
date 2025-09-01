@@ -23,6 +23,7 @@ class SessionDataChannel(IDataChannel):
         self._channel: Optional[WebSocketChannel] = None
         self._input_handler: Optional[Callable[[bytes], None]] = None
         self._output_handler: Optional[Callable[[bytes], None]] = None
+        self._closed_handler: Optional[Callable[[], None]] = None
         
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
@@ -96,6 +97,10 @@ class SessionDataChannel(IDataChannel):
     def set_output_handler(self, handler: Callable[[bytes], None]) -> None:
         """Set handler for output data to remote."""
         self._output_handler = handler
+
+    def set_closed_handler(self, handler: Callable[[], None]) -> None:
+        """Set handler called when the channel closes or errors."""
+        self._closed_handler = handler
 
     def _handle_message(self, message: WebSocketMessage) -> None:
         """Handle incoming WebSocket message."""
@@ -188,6 +193,12 @@ class SessionDataChannel(IDataChannel):
     def _handle_connection_change(self, state: ConnectionState) -> None:
         """Handle connection state changes."""
         self.logger.info(f"Data channel connection state: {state.value}")
+        if state in (ConnectionState.CLOSED, ConnectionState.ERROR):
+            try:
+                if self._closed_handler:
+                    self._closed_handler()
+            except Exception as e:
+                self.logger.debug(f"Closed handler error: {e}")
 
     def get_channel_info(self) -> Dict[str, Any]:
         """Get channel information."""
@@ -241,6 +252,8 @@ class SessionDataChannel(IDataChannel):
     async def _send_acknowledgment(self, original_message) -> None:
         """Send acknowledgment message for received message."""
         try:
+            if not self.is_open or self._channel is None:
+                return
             # Create acknowledgment message
             ack_message = create_acknowledge_message(original_message)
             

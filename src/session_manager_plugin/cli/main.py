@@ -126,6 +126,16 @@ class SessionManagerPlugin:
         # Set up input/output handlers for different session types
         await self._configure_data_channel_handlers(data_channel, args)
 
+        # Ensure we shutdown when the data channel closes
+        def on_closed() -> None:
+            try:
+                asyncio.get_event_loop().create_task(self._initiate_shutdown())
+            except RuntimeError:
+                # If no running loop, fall back to setting the event synchronously
+                if not self._shutdown_event.is_set():
+                    self._shutdown_event.set()
+        data_channel.set_closed_handler(on_closed)
+
         return data_channel
 
     async def _configure_data_channel_handlers(
