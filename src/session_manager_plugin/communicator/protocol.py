@@ -52,6 +52,7 @@ class ClientMessageOffsets:
 @dataclass
 class ClientMessage:
     """Parsed AWS SSM ClientMessage structure."""
+
     header_length: int
     message_type: str
     schema_version: int
@@ -75,7 +76,7 @@ class ClientMessage:
     def get_shell_data(self) -> str:
         """Get shell data as string."""
         if self.is_shell_output():
-            return self.payload.decode('utf-8', errors='replace')
+            return self.payload.decode("utf-8", errors="replace")
         return ""
 
     def get_message_id_string(self) -> str:
@@ -100,10 +101,10 @@ class ClientMessage:
 def parse_client_message(data: bytes) -> ClientMessage | None:
     """
     Parse AWS SSM binary ClientMessage format.
-    
+
     Args:
         data: Binary message data from WebSocket
-        
+
     Returns:
         Parsed ClientMessage or None if parsing fails
     """
@@ -112,69 +113,92 @@ def parse_client_message(data: bytes) -> ClientMessage | None:
             return None
 
         # Parse header length first
-        header_length = struct.unpack('>I', data[
-            ClientMessageOffsets.HL_OFFSET:
-            ClientMessageOffsets.HL_OFFSET + ClientMessageOffsets.HL_LENGTH
-        ])[0]
+        header_length = struct.unpack(
+            ">I",
+            data[
+                ClientMessageOffsets.HL_OFFSET : ClientMessageOffsets.HL_OFFSET
+                + ClientMessageOffsets.HL_LENGTH
+            ],
+        )[0]
 
         # Parse message type (32 bytes, null-padded string)
         message_type_bytes = data[
-            ClientMessageOffsets.MESSAGE_TYPE_OFFSET:
-            ClientMessageOffsets.MESSAGE_TYPE_OFFSET + ClientMessageOffsets.MESSAGE_TYPE_LENGTH
+            ClientMessageOffsets.MESSAGE_TYPE_OFFSET : ClientMessageOffsets.MESSAGE_TYPE_OFFSET
+            + ClientMessageOffsets.MESSAGE_TYPE_LENGTH
         ]
-        message_type = message_type_bytes.rstrip(b'\x00 ').decode('utf-8', errors='ignore')
+        message_type = message_type_bytes.rstrip(b"\x00 ").decode(
+            "utf-8", errors="ignore"
+        )
 
         # Parse schema version
-        schema_version = struct.unpack('>I', data[
-            ClientMessageOffsets.SCHEMA_VERSION_OFFSET:
-            ClientMessageOffsets.SCHEMA_VERSION_OFFSET + ClientMessageOffsets.SCHEMA_VERSION_LENGTH
-        ])[0]
+        schema_version = struct.unpack(
+            ">I",
+            data[
+                ClientMessageOffsets.SCHEMA_VERSION_OFFSET : ClientMessageOffsets.SCHEMA_VERSION_OFFSET
+                + ClientMessageOffsets.SCHEMA_VERSION_LENGTH
+            ],
+        )[0]
 
         # Parse created date
-        created_date = struct.unpack('>Q', data[
-            ClientMessageOffsets.CREATED_DATE_OFFSET:
-            ClientMessageOffsets.CREATED_DATE_OFFSET + ClientMessageOffsets.CREATED_DATE_LENGTH
-        ])[0]
+        created_date = struct.unpack(
+            ">Q",
+            data[
+                ClientMessageOffsets.CREATED_DATE_OFFSET : ClientMessageOffsets.CREATED_DATE_OFFSET
+                + ClientMessageOffsets.CREATED_DATE_LENGTH
+            ],
+        )[0]
 
         # Parse sequence number
-        sequence_number = struct.unpack('>q', data[
-            ClientMessageOffsets.SEQUENCE_NUMBER_OFFSET:
-            ClientMessageOffsets.SEQUENCE_NUMBER_OFFSET + ClientMessageOffsets.SEQUENCE_NUMBER_LENGTH
-        ])[0]
+        sequence_number = struct.unpack(
+            ">q",
+            data[
+                ClientMessageOffsets.SEQUENCE_NUMBER_OFFSET : ClientMessageOffsets.SEQUENCE_NUMBER_OFFSET
+                + ClientMessageOffsets.SEQUENCE_NUMBER_LENGTH
+            ],
+        )[0]
 
         # Parse flags
-        flags = struct.unpack('>Q', data[
-            ClientMessageOffsets.FLAGS_OFFSET:
-            ClientMessageOffsets.FLAGS_OFFSET + ClientMessageOffsets.FLAGS_LENGTH
-        ])[0]
+        flags = struct.unpack(
+            ">Q",
+            data[
+                ClientMessageOffsets.FLAGS_OFFSET : ClientMessageOffsets.FLAGS_OFFSET
+                + ClientMessageOffsets.FLAGS_LENGTH
+            ],
+        )[0]
 
         # Parse message ID (16 bytes UUID)
         message_id = data[
-            ClientMessageOffsets.MESSAGE_ID_OFFSET:
-            ClientMessageOffsets.MESSAGE_ID_OFFSET + ClientMessageOffsets.MESSAGE_ID_LENGTH
+            ClientMessageOffsets.MESSAGE_ID_OFFSET : ClientMessageOffsets.MESSAGE_ID_OFFSET
+            + ClientMessageOffsets.MESSAGE_ID_LENGTH
         ]
 
         # Parse payload digest (32 bytes SHA-256)
         payload_digest = data[
-            ClientMessageOffsets.PAYLOAD_DIGEST_OFFSET:
-            ClientMessageOffsets.PAYLOAD_DIGEST_OFFSET + ClientMessageOffsets.PAYLOAD_DIGEST_LENGTH
+            ClientMessageOffsets.PAYLOAD_DIGEST_OFFSET : ClientMessageOffsets.PAYLOAD_DIGEST_OFFSET
+            + ClientMessageOffsets.PAYLOAD_DIGEST_LENGTH
         ]
 
         # Parse payload type
-        payload_type = struct.unpack('>I', data[
-            ClientMessageOffsets.PAYLOAD_TYPE_OFFSET:
-            ClientMessageOffsets.PAYLOAD_TYPE_OFFSET + ClientMessageOffsets.PAYLOAD_TYPE_LENGTH
-        ])[0]
+        payload_type = struct.unpack(
+            ">I",
+            data[
+                ClientMessageOffsets.PAYLOAD_TYPE_OFFSET : ClientMessageOffsets.PAYLOAD_TYPE_OFFSET
+                + ClientMessageOffsets.PAYLOAD_TYPE_LENGTH
+            ],
+        )[0]
 
         # Parse payload length
-        payload_length = struct.unpack('>I', data[
-            ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET:
-            ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH
-        ])[0]
+        payload_length = struct.unpack(
+            ">I",
+            data[
+                ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET : ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET
+                + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH
+            ],
+        )[0]
 
         # Extract payload based on header length
         payload_start = header_length + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH
-        payload = data[payload_start:payload_start + payload_length]
+        payload = data[payload_start : payload_start + payload_length]
 
         return ClientMessage(
             header_length=header_length,
@@ -187,7 +211,7 @@ def parse_client_message(data: bytes) -> ClientMessage | None:
             payload_digest=payload_digest,
             payload_type=payload_type,
             payload_length=payload_length,
-            payload=payload
+            payload=payload,
         )
 
     except (struct.error, IndexError, UnicodeDecodeError) as e:
@@ -198,6 +222,7 @@ def parse_client_message(data: bytes) -> ClientMessage | None:
 @dataclass
 class AcknowledgeContent:
     """Acknowledgment content for AWS SSM protocol."""
+
     acknowledged_message_type: str
     acknowledged_message_id: str
     acknowledged_message_sequence_number: int
@@ -207,19 +232,19 @@ class AcknowledgeContent:
         """Convert to dictionary for JSON serialization."""
         return {
             "AcknowledgedMessageType": self.acknowledged_message_type,
-            "AcknowledgedMessageId": self.acknowledged_message_id, 
+            "AcknowledgedMessageId": self.acknowledged_message_id,
             "AcknowledgedMessageSequenceNumber": self.acknowledged_message_sequence_number,
-            "IsSequentialMessage": self.is_sequential_message
+            "IsSequentialMessage": self.is_sequential_message,
         }
 
 
 def create_acknowledge_message(original_message: ClientMessage) -> bytes:
     """
     Create acknowledgment message for a received ClientMessage.
-    
+
     Args:
         original_message: The message to acknowledge
-        
+
     Returns:
         Binary acknowledgment message to send back to server
     """
@@ -227,16 +252,16 @@ def create_acknowledge_message(original_message: ClientMessage) -> bytes:
     ack_content = AcknowledgeContent(
         acknowledged_message_type=original_message.message_type.strip(),
         acknowledged_message_id=original_message.get_message_id_string(),
-        acknowledged_message_sequence_number=original_message.sequence_number
+        acknowledged_message_sequence_number=original_message.sequence_number,
     )
-    
+
     # Serialize acknowledge content as JSON
-    ack_payload = json.dumps(ack_content.to_dict()).encode('utf-8')
-    
+    ack_payload = json.dumps(ack_content.to_dict()).encode("utf-8")
+
     # Create acknowledge message
     message_id = uuid.uuid4()
     created_date = int(time.time() * 1000)  # Unix epoch millis
-    
+
     return serialize_client_message(
         message_type=MESSAGE_ACKNOWLEDGE,
         schema_version=1,
@@ -244,7 +269,7 @@ def create_acknowledge_message(original_message: ClientMessage) -> bytes:
         sequence_number=0,  # Acknowledge messages have sequence 0
         flags=3,  # SYN + FIN flags as per Go implementation
         message_id=message_id.bytes,
-        payload=ack_payload
+        payload=ack_payload,
     )
 
 
@@ -257,11 +282,11 @@ def _write_uuid_like_go(buf: bytearray, offset: int, message_id: bytes) -> None:
     if len(message_id) < 16:
         raise ValueError("message_id must be 16 bytes")
 
-    ls = int.from_bytes(message_id[8:16], byteorder='big', signed=True)
-    ms = int.from_bytes(message_id[0:8], byteorder='big', signed=True)
+    ls = int.from_bytes(message_id[8:16], byteorder="big", signed=True)
+    ms = int.from_bytes(message_id[0:8], byteorder="big", signed=True)
 
-    struct.pack_into('>q', buf, ClientMessageOffsets.MESSAGE_ID_OFFSET, ls)
-    struct.pack_into('>q', buf, ClientMessageOffsets.MESSAGE_ID_OFFSET + 8, ms)
+    struct.pack_into(">q", buf, ClientMessageOffsets.MESSAGE_ID_OFFSET, ls)
+    struct.pack_into(">q", buf, ClientMessageOffsets.MESSAGE_ID_OFFSET + 8, ms)
 
 
 def _write_message_type(buf: bytearray, message_type: str) -> None:
@@ -270,9 +295,9 @@ def _write_message_type(buf: bytearray, message_type: str) -> None:
     start = ClientMessageOffsets.MESSAGE_TYPE_OFFSET
     end = start + field_len
     # Fill with spaces, then copy
-    buf[start:end] = b' ' * field_len
-    mt = message_type.encode('utf-8')[:field_len]
-    buf[start:start + len(mt)] = mt
+    buf[start:end] = b" " * field_len
+    mt = message_type.encode("utf-8")[:field_len]
+    buf[start : start + len(mt)] = mt
 
 
 def serialize_client_message(
@@ -287,56 +312,73 @@ def serialize_client_message(
 ) -> bytes:
     """
     Serialize ClientMessage to AWS SSM binary format.
-    
+
     Based on Go implementation structure:
     HL | MessageType | Ver | CD | Seq | Flags | MessageId | Digest | PayType | PayLen | Payload
     """
     # Calculate lengths
     payload_length = len(payload)
-    header_length = ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET  # Up to PayloadLength field = 116
-    total_length = header_length + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH + payload_length
-    
+    header_length = (
+        ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET
+    )  # Up to PayloadLength field = 116
+    total_length = (
+        header_length + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH + payload_length
+    )
+
     # Create buffer
     result = bytearray(total_length)
-    
+
     # Header length (4 bytes) - this is the key fix!
-    struct.pack_into('>I', result, ClientMessageOffsets.HL_OFFSET, header_length)
-    
+    struct.pack_into(">I", result, ClientMessageOffsets.HL_OFFSET, header_length)
+
     # Message type (32 bytes, space-padded like Go)
     _write_message_type(result, message_type)
-    
+
     # Schema version (4 bytes)
-    struct.pack_into('>I', result, ClientMessageOffsets.SCHEMA_VERSION_OFFSET, schema_version)
-    
+    struct.pack_into(
+        ">I", result, ClientMessageOffsets.SCHEMA_VERSION_OFFSET, schema_version
+    )
+
     # Created date (8 bytes)
-    struct.pack_into('>Q', result, ClientMessageOffsets.CREATED_DATE_OFFSET, created_date)
-    
+    struct.pack_into(
+        ">Q", result, ClientMessageOffsets.CREATED_DATE_OFFSET, created_date
+    )
+
     # Sequence number (8 bytes, signed)
-    struct.pack_into('>q', result, ClientMessageOffsets.SEQUENCE_NUMBER_OFFSET, sequence_number)
-    
+    struct.pack_into(
+        ">q", result, ClientMessageOffsets.SEQUENCE_NUMBER_OFFSET, sequence_number
+    )
+
     # Flags (8 bytes)
-    struct.pack_into('>Q', result, ClientMessageOffsets.FLAGS_OFFSET, flags)
-    
+    struct.pack_into(">Q", result, ClientMessageOffsets.FLAGS_OFFSET, flags)
+
     # Message ID (16 bytes) in Go layout
     _write_uuid_like_go(result, ClientMessageOffsets.MESSAGE_ID_OFFSET, message_id[:16])
-    
+
     # Payload digest (32 bytes) - compute SHA-256 of payload
     digest = hashlib.sha256(payload).digest() if payload else bytes(32)
     start = ClientMessageOffsets.PAYLOAD_DIGEST_OFFSET
     end = start + ClientMessageOffsets.PAYLOAD_DIGEST_LENGTH
     result[start:end] = digest
-    
+
     # Payload type (4 bytes)
-    struct.pack_into('>I', result, ClientMessageOffsets.PAYLOAD_TYPE_OFFSET, payload_type)
-    
-    # Payload length (4 bytes) 
-    struct.pack_into('>I', result, ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET, payload_length)
-    
+    struct.pack_into(
+        ">I", result, ClientMessageOffsets.PAYLOAD_TYPE_OFFSET, payload_type
+    )
+
+    # Payload length (4 bytes)
+    struct.pack_into(
+        ">I", result, ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET, payload_length
+    )
+
     # Payload - place it right after PayloadLength field
     if payload:
-        payload_start = ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH
-        result[payload_start:payload_start + len(payload)] = payload
-    
+        payload_start = (
+            ClientMessageOffsets.PAYLOAD_LENGTH_OFFSET
+            + ClientMessageOffsets.PAYLOAD_LENGTH_LENGTH
+        )
+        result[payload_start : payload_start + len(payload)] = payload
+
     return bytes(result)
 
 

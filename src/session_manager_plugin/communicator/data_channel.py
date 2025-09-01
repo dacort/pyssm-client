@@ -38,7 +38,7 @@ class SessionDataChannel(IDataChannel):
         self._input_handler: Callable[[bytes], None] | None = None
         self._output_handler: Callable[[bytes], None] | None = None
         self._closed_handler: Callable[[], None] | None = None
-        
+
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
         self._initial_output_received = False
@@ -87,7 +87,9 @@ class SessionDataChannel(IDataChannel):
             self.logger.error(f"Error opening data channel: {e}")
             return False
 
-    def set_client_info(self, client_id: str | None, client_version: str | None = None) -> None:
+    def set_client_info(
+        self, client_id: str | None, client_version: str | None = None
+    ) -> None:
         """Set client metadata used during handshake."""
         if client_id:
             self._client_id = client_id
@@ -101,7 +103,9 @@ class SessionDataChannel(IDataChannel):
 
         try:
             if not self._input_allowed:
-                self.logger.debug("Input paused by remote (pause_publication); dropping input")
+                self.logger.debug(
+                    "Input paused by remote (pause_publication); dropping input"
+                )
                 return
             # Normalize line endings to match SSM expectations
             normalized = self._normalize_input(data)
@@ -137,14 +141,17 @@ class SessionDataChannel(IDataChannel):
     def _schedule_flush(self) -> None:
         try:
             import asyncio as _asyncio
+
             if self._flush_task and not self._flush_task.done():
                 self._flush_task.cancel()
+
             async def _wait_and_flush():
                 try:
                     await _asyncio.sleep(self._flush_delay_sec)
                     await self._flush_input_buffer()
                 except _asyncio.CancelledError:
                     pass
+
             self._flush_task = _asyncio.create_task(_wait_and_flush())
         except Exception as e:
             self.logger.debug(f"Failed to schedule flush: {e}")
@@ -164,7 +171,9 @@ class SessionDataChannel(IDataChannel):
             return
         input_message = self._create_input_stream_message(payload)
         await self._channel.send_message(input_message)
-        self.logger.debug(f"Sent {len(payload)} bytes of input data as AWS SSM input stream message")
+        self.logger.debug(
+            f"Sent {len(payload)} bytes of input data as AWS SSM input stream message"
+        )
 
     async def close(self) -> None:
         """Close the data channel."""
@@ -209,7 +218,7 @@ class SessionDataChannel(IDataChannel):
                 # Parse AWS SSM binary protocol
                 if isinstance(message.data, bytes):
                     client_message = parse_client_message(message.data)
-                    
+
                     if client_message:
                         self.logger.debug(
                             f"Parsed AWS SSM message: type={client_message.message_type}, "
@@ -217,23 +226,37 @@ class SessionDataChannel(IDataChannel):
                             f"payload_length={client_message.payload_length}, "
                             f"sequence={client_message.sequence_number} (expected={self._expected_sequence_number})"
                         )
-                        
+
                         message_processed = False
 
                         # Handshake and control payloads
                         if client_message.payload_type == PayloadType.HANDSHAKE_REQUEST:
                             self._schedule_handshake_response(client_message)
                             message_processed = True
-                        elif client_message.payload_type == PayloadType.HANDSHAKE_COMPLETE:
+                        elif (
+                            client_message.payload_type
+                            == PayloadType.HANDSHAKE_COMPLETE
+                        ):
                             # Optionally display customer message
                             try:
                                 import json as _json
-                                payload = _json.loads(client_message.payload.decode('utf-8', errors='ignore'))
-                                cust_msg = payload.get('CustomerMessage') or payload.get('customerMessage')
+
+                                payload = _json.loads(
+                                    client_message.payload.decode(
+                                        "utf-8", errors="ignore"
+                                    )
+                                )
+                                cust_msg = payload.get(
+                                    "CustomerMessage"
+                                ) or payload.get("customerMessage")
                                 if cust_msg and self._input_handler:
-                                    self._input_handler((cust_msg + "\n").encode('utf-8'))
+                                    self._input_handler(
+                                        (cust_msg + "\n").encode("utf-8")
+                                    )
                             except Exception as e:
-                                self.logger.debug(f"Failed to parse HandshakeComplete payload: {e}")
+                                self.logger.debug(
+                                    f"Failed to parse HandshakeComplete payload: {e}"
+                                )
                             # Log summary (agent_version, session_type, client_version)
                             summary = {
                                 "agent_version": self._agent_version or "",
@@ -242,41 +265,75 @@ class SessionDataChannel(IDataChannel):
                             }
                             self.logger.debug(
                                 "Handshake complete: agent_version=%s, session_type=%s, client_version=%s",
-                                summary["agent_version"], summary["session_type"], summary["client_version"],
+                                summary["agent_version"],
+                                summary["session_type"],
+                                summary["client_version"],
                             )
                             message_processed = True
-                        elif client_message.payload_type == PayloadType.ENC_CHALLENGE_REQUEST:
+                        elif (
+                            client_message.payload_type
+                            == PayloadType.ENC_CHALLENGE_REQUEST
+                        ):
                             # Not supported; log only
-                            self.logger.info("Encryption challenge not supported; ignoring.")
+                            self.logger.info(
+                                "Encryption challenge not supported; ignoring."
+                            )
                             message_processed = True
                         # Shell and stderr output
-                        elif client_message.message_type.strip() == MESSAGE_CHANNEL_CLOSED:
+                        elif (
+                            client_message.message_type.strip()
+                            == MESSAGE_CHANNEL_CLOSED
+                        ):
                             # Friendly notice then close
                             try:
                                 import json as _json
-                                payload = _json.loads(client_message.payload.decode('utf-8', errors='ignore'))
-                                output = payload.get('Output') or payload.get('output') or "Session closed."
-                                sess_id = payload.get('SessionId') or payload.get('sessionId')
+
+                                payload = _json.loads(
+                                    client_message.payload.decode(
+                                        "utf-8", errors="ignore"
+                                    )
+                                )
+                                output = (
+                                    payload.get("Output")
+                                    or payload.get("output")
+                                    or "Session closed."
+                                )
+                                sess_id = payload.get("SessionId") or payload.get(
+                                    "sessionId"
+                                )
                             except Exception:
                                 output = "Session closed."
                                 sess_id = None
-                            if not getattr(self, "_closed_message_printed", False) and self._input_handler:
+                            if (
+                                not getattr(self, "_closed_message_printed", False)
+                                and self._input_handler
+                            ):
                                 if sess_id:
                                     msg = f"\n\nSessionId: {sess_id} : {output}\n\n"
                                 else:
                                     msg = f"\n\n{output}\n\n"
-                                self._input_handler(msg.encode('utf-8'))
+                                self._input_handler(msg.encode("utf-8"))
                                 self._closed_message_printed = True
                             # Trigger close once
                             self._trigger_closed()
                             message_processed = True
-                        elif client_message.message_type.strip() == MESSAGE_START_PUBLICATION:
+                        elif (
+                            client_message.message_type.strip()
+                            == MESSAGE_START_PUBLICATION
+                        ):
                             self._input_allowed = True
-                            self.logger.debug("Received start_publication; input allowed")
+                            self.logger.debug(
+                                "Received start_publication; input allowed"
+                            )
                             message_processed = True
-                        elif client_message.message_type.strip() == MESSAGE_PAUSE_PUBLICATION:
+                        elif (
+                            client_message.message_type.strip()
+                            == MESSAGE_PAUSE_PUBLICATION
+                        ):
                             self._input_allowed = False
-                            self.logger.debug("Received pause_publication; input paused")
+                            self.logger.debug(
+                                "Received pause_publication; input paused"
+                            )
                             message_processed = True
                         elif client_message.is_shell_output():
                             seq = client_message.sequence_number
@@ -284,7 +341,7 @@ class SessionDataChannel(IDataChannel):
                                 # Display now
                                 shell_data = client_message.get_shell_data()
                                 if shell_data and self._input_handler:
-                                    self._input_handler(shell_data.encode('utf-8'))
+                                    self._input_handler(shell_data.encode("utf-8"))
                                 message_processed = True
                             elif seq > self._expected_sequence_number:
                                 # Buffer for later; still ack
@@ -293,23 +350,34 @@ class SessionDataChannel(IDataChannel):
                             else:
                                 # Old message; ignore
                                 message_processed = False
-                        
+
                         # Handle AWS SSM sequence tracking properly
                         if message_processed:
                             # Only acknowledge applicable messages (not ack or channel_closed or start/pause publication)
-                            if client_message.message_type not in (MESSAGE_ACKNOWLEDGE, MESSAGE_CHANNEL_CLOSED, MESSAGE_START_PUBLICATION, MESSAGE_PAUSE_PUBLICATION):
+                            if client_message.message_type not in (
+                                MESSAGE_ACKNOWLEDGE,
+                                MESSAGE_CHANNEL_CLOSED,
+                                MESSAGE_START_PUBLICATION,
+                                MESSAGE_PAUSE_PUBLICATION,
+                            ):
                                 self._schedule_acknowledgment(client_message)
 
                             # Update expected sequence only for output stream messages
                             if client_message.message_type == MESSAGE_OUTPUT_STREAM:
-                                if client_message.sequence_number == self._expected_sequence_number:
+                                if (
+                                    client_message.sequence_number
+                                    == self._expected_sequence_number
+                                ):
                                     self._expected_sequence_number += 1
                                     self.logger.debug(
                                         f"Updated expected sequence to {self._expected_sequence_number}"
                                     )
                                     # Process any buffered messages now in order
                                     self._drain_buffered_output()
-                                elif client_message.sequence_number > self._expected_sequence_number:
+                                elif (
+                                    client_message.sequence_number
+                                    > self._expected_sequence_number
+                                ):
                                     # Out-of-order; keep expected and rely on buffered processing
                                     self.logger.debug(
                                         f"Received future sequence {client_message.sequence_number}, expected {self._expected_sequence_number}"
@@ -320,7 +388,9 @@ class SessionDataChannel(IDataChannel):
                                     )
                     else:
                         # Fallback for unparseable messages
-                        self.logger.debug(f"Failed to parse binary message: {len(message.data)} bytes")
+                        self.logger.debug(
+                            f"Failed to parse binary message: {len(message.data)} bytes"
+                        )
                         if self._input_handler:
                             self._input_handler(message.data)
 
@@ -341,9 +411,11 @@ class SessionDataChannel(IDataChannel):
                 if cm and cm.is_shell_output():
                     shell_data = cm.get_shell_data()
                     if shell_data and self._input_handler:
-                        self._input_handler(shell_data.encode('utf-8'))
+                        self._input_handler(shell_data.encode("utf-8"))
                 self._expected_sequence_number += 1
-                self.logger.debug(f"Drained buffered seq; expected now {self._expected_sequence_number}")
+                self.logger.debug(
+                    f"Drained buffered seq; expected now {self._expected_sequence_number}"
+                )
         except Exception as e:
             self.logger.debug(f"Drain buffer failed: {e}")
 
@@ -377,9 +449,9 @@ class SessionDataChannel(IDataChannel):
             return info
         else:
             return {
-                "state": "not_initialized", 
+                "state": "not_initialized",
                 "is_open": False,
-                "expected_sequence_number": self._expected_sequence_number
+                "expected_sequence_number": self._expected_sequence_number,
             }
 
     async def _send_handshake_initialization(self) -> None:
@@ -394,33 +466,44 @@ class SessionDataChannel(IDataChannel):
                 "ClientId": self._client_id or "",
                 "ClientVersion": self._client_version,
             }
-            
+
             # Send as JSON text message
             message_json = json.dumps(handshake_message)
             await self._channel.send_message(message_json)
-            
-            self.logger.debug(f"Sent handshake initialization: RequestId={handshake_message['RequestId']}")
-            
+
+            self.logger.debug(
+                f"Sent handshake initialization: RequestId={handshake_message['RequestId']}"
+            )
+
         except Exception as e:
             self.logger.error(f"Failed to send handshake initialization: {e}")
             raise
-    
+
     def _schedule_acknowledgment(self, original_message) -> None:
         """Schedule acknowledgment message to be sent asynchronously."""
         import asyncio
+
         try:
-            # Schedule the acknowledgment to be sent in the next event loop iteration
-            asyncio.create_task(self._send_acknowledgment(original_message))
-        except Exception as e:
-            self.logger.error(f"Failed to schedule acknowledgment: {e}")
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop (e.g., synchronous unit test); skip scheduling to avoid un-awaited coroutine warnings
+            self.logger.debug("No running event loop; skipping async ack scheduling")
+            return
+        # Schedule the acknowledgment to be sent in the next event loop iteration
+        loop.create_task(self._send_acknowledgment(original_message))
 
     def _schedule_handshake_response(self, original_message) -> None:
         import asyncio
+
         try:
-            asyncio.create_task(self._send_handshake_response(original_message))
-        except Exception as e:
-            self.logger.error(f"Failed to schedule handshake response: {e}")
-    
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.logger.debug(
+                "No running event loop; skipping async handshake response scheduling"
+            )
+            return
+        loop.create_task(self._send_handshake_response(original_message))
+
     async def _send_acknowledgment(self, original_message) -> None:
         """Send acknowledgment message for received message."""
         try:
@@ -428,7 +511,7 @@ class SessionDataChannel(IDataChannel):
                 return
             # Create acknowledgment message
             ack_message = create_acknowledge_message(original_message)
-            
+
             # Send acknowledgment through WebSocket
             if self._channel:
                 await self._channel.send_message(ack_message)
@@ -439,7 +522,7 @@ class SessionDataChannel(IDataChannel):
                 )
             else:
                 self.logger.error("Cannot send acknowledgment: channel not available")
-                
+
         except Exception as e:
             self.logger.error(f"Failed to send acknowledgment: {e}")
             # Don't raise - acknowledgment failure shouldn't stop message processing
@@ -458,7 +541,9 @@ class SessionDataChannel(IDataChannel):
 
             # Attempt to parse request and respond per action
             try:
-                request = _json.loads(original_message.payload.decode('utf-8', errors='ignore'))
+                request = _json.loads(
+                    original_message.payload.decode("utf-8", errors="ignore")
+                )
                 actions = request.get("RequestedClientActions", [])
                 # Capture AgentVersion if present
                 self._agent_version = request.get("AgentVersion") or self._agent_version
@@ -471,16 +556,21 @@ class SessionDataChannel(IDataChannel):
                         if isinstance(ap, str):
                             try:
                                 import json as _json2
+
                                 ap = _json2.loads(ap)
                             except Exception:
                                 ap = {}
-                        self._session_type = ap.get("SessionType") or self._session_type or ""
+                        self._session_type = (
+                            ap.get("SessionType") or self._session_type or ""
+                        )
                         self._session_properties = ap.get("Properties") or {}
                         # Echo back minimal result
                         processed["ActionResult"] = action.get("ActionParameters")
                     elif atype == "KMSEncryption":
                         processed["ActionStatus"] = 3  # Unsupported
-                        processed["Error"] = "KMSEncryption not supported in Python client"
+                        processed["Error"] = (
+                            "KMSEncryption not supported in Python client"
+                        )
                     else:
                         processed["ActionStatus"] = 3
                         processed["Error"] = f"Unsupported action {atype}"
@@ -488,19 +578,23 @@ class SessionDataChannel(IDataChannel):
             except Exception as e:
                 self.logger.debug(f"Failed to parse HandshakeRequest payload: {e}")
 
-            payload = _json.dumps(response).encode('utf-8')
-            msg = self._serialize_input_message_with_payload_type(payload, PayloadType.HANDSHAKE_RESPONSE)
+            payload = _json.dumps(response).encode("utf-8")
+            msg = self._serialize_input_message_with_payload_type(
+                payload, PayloadType.HANDSHAKE_RESPONSE
+            )
             if self._channel:
                 await self._channel.send_message(msg)
                 self.logger.debug("Sent HandshakeResponse")
         except Exception as e:
             self.logger.error(f"Failed to send HandshakeResponse: {e}")
-    
-    def _serialize_input_message_with_payload_type(self, input_data: bytes, payload_type: int) -> bytes:
+
+    def _serialize_input_message_with_payload_type(
+        self, input_data: bytes, payload_type: int
+    ) -> bytes:
         """Serialize input message with specific payload type."""
         import time
         import uuid
-        
+
         # Note: line ending normalization handled earlier
         message_uuid = uuid.uuid4()
         created_date = int(time.time() * 1000)
@@ -519,15 +613,17 @@ class SessionDataChannel(IDataChannel):
             payload=input_data,
             payload_type=payload_type,
         )
-    
+
     def _schedule_shell_input(self, data: bytes) -> None:
         """Deprecated: previously used for experimental auto-input; now a no-op."""
         self.logger.debug("_schedule_shell_input is deprecated and will be ignored.")
-    
+
     def _create_input_stream_message(self, input_data: bytes) -> bytes:
         """Create AWS SSM input stream message for keyboard input."""
         # Use OUTPUT payload type for normal keyboard input (matches Go plugin)
-        return self._serialize_input_message_with_payload_type(input_data, PayloadType.OUTPUT)
+        return self._serialize_input_message_with_payload_type(
+            input_data, PayloadType.OUTPUT
+        )
 
     def _normalize_input(self, data: bytes) -> bytes:
         """Normalize line endings for SSM: map LF and CRLF to CR."""
@@ -543,7 +639,9 @@ class SessionDataChannel(IDataChannel):
             return
         try:
             payload = json.dumps({"cols": int(cols), "rows": int(rows)}).encode("utf-8")
-            msg = self._serialize_input_message_with_payload_type(payload, PayloadType.SIZE)
+            msg = self._serialize_input_message_with_payload_type(
+                payload, PayloadType.SIZE
+            )
             await self._channel.send_message(msg)
             self.logger.debug(f"Sent terminal size: cols={cols}, rows={rows}")
         except Exception as e:

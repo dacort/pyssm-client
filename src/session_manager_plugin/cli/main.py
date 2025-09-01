@@ -71,11 +71,13 @@ class SessionManagerPlugin:
             # Set up data channel for session BEFORE executing
             # Also supply client metadata for handshake
             try:
-                data_channel.set_client_info(self._current_session.client_id, CLIENT_VERSION)
+                data_channel.set_client_info(
+                    self._current_session.client_id, CLIENT_VERSION
+                )
             except Exception:
                 pass
             self._current_session.set_data_channel(data_channel)
-            
+
             # Now execute the session with data channel properly set
             await self._current_session.execute()
 
@@ -143,12 +145,15 @@ class SessionManagerPlugin:
                 # If no running loop, fall back to setting the event synchronously
                 if not self._shutdown_event.is_set():
                     self._shutdown_event.set()
+
         data_channel.set_closed_handler(on_closed)
 
         # Configure coalescing based on CLI setting
         try:
             mode = getattr(self, "_coalesce_mode", "auto").lower()
-            delay_sec = max(0.0, float(getattr(self, "_coalesce_delay_ms", 10.0)) / 1000.0)
+            delay_sec = max(
+                0.0, float(getattr(self, "_coalesce_delay_ms", 10.0)) / 1000.0
+            )
             if mode == "on":
                 data_channel.set_coalescing(True, delay_sec=delay_sec)
                 self.logger.debug(f"Input coalescing: enabled (delay={delay_sec}s)")
@@ -158,7 +163,9 @@ class SessionManagerPlugin:
             else:  # auto
                 enabled = not sys.stdin.isatty()
                 data_channel.set_coalescing(enabled, delay_sec=delay_sec)
-                self.logger.debug(f"Input coalescing: auto -> {'enabled' if enabled else 'disabled'} (delay={delay_sec}s)")
+                self.logger.debug(
+                    f"Input coalescing: auto -> {'enabled' if enabled else 'disabled'} (delay={delay_sec}s)"
+                )
         except Exception as e:
             self.logger.debug(f"Failed to configure coalescing: {e}")
 
@@ -257,15 +264,25 @@ class SessionManagerPlugin:
         # Prefer asyncio loop signal handlers on Unix for better integration
         try:
             if hasattr(signal, "SIGINT"):
-                loop.add_signal_handler(signal.SIGINT, sigint_handler, signal.SIGINT, None)
+                loop.add_signal_handler(
+                    signal.SIGINT, sigint_handler, signal.SIGINT, None
+                )
             if hasattr(signal, "SIGTERM"):
-                loop.add_signal_handler(signal.SIGTERM, sigterm_handler, signal.SIGTERM, None)
+                loop.add_signal_handler(
+                    signal.SIGTERM, sigterm_handler, signal.SIGTERM, None
+                )
             if hasattr(signal, "SIGWINCH"):
-                loop.add_signal_handler(signal.SIGWINCH, sigwinch_handler, signal.SIGWINCH, None)
+                loop.add_signal_handler(
+                    signal.SIGWINCH, sigwinch_handler, signal.SIGWINCH, None
+                )
             if hasattr(signal, "SIGQUIT"):
-                loop.add_signal_handler(signal.SIGQUIT, sigquit_handler, signal.SIGQUIT, None)
+                loop.add_signal_handler(
+                    signal.SIGQUIT, sigquit_handler, signal.SIGQUIT, None
+                )
             if hasattr(signal, "SIGTSTP"):
-                loop.add_signal_handler(signal.SIGTSTP, sigtstp_handler, signal.SIGTSTP, None)
+                loop.add_signal_handler(
+                    signal.SIGTSTP, sigtstp_handler, signal.SIGTSTP, None
+                )
         except (NotImplementedError, RuntimeError):
             # Fallback to signal.signal when loop.add_signal_handler is unavailable (e.g., Windows)
             signal.signal(signal.SIGINT, sigint_handler)
@@ -310,9 +327,11 @@ class SessionManagerPlugin:
                 loop.add_reader(stdin_fd, self._on_stdin_ready)
                 self.logger.debug("Registered stdin reader")
             except Exception as e:
-                self.logger.debug(f"Failed to add_reader for stdin: {e}; falling back to thread reader")
+                self.logger.debug(
+                    f"Failed to add_reader for stdin: {e}; falling back to thread reader"
+                )
                 stdin_task = asyncio.create_task(self._handle_stdin_input())
-        
+
         try:
             # Wait for shutdown signal
             await self._shutdown_event.wait()
@@ -363,7 +382,11 @@ class SessionManagerPlugin:
     def _on_stdin_ready(self) -> None:
         """Callback when stdin has data; reads and forwards to data channel."""
         try:
-            if not (self._current_session and self._current_session.data_channel and self._current_session.data_channel.is_open):
+            if not (
+                self._current_session
+                and self._current_session.data_channel
+                and self._current_session.data_channel.is_open
+            ):
                 return
             fd = sys.stdin.fileno()
             # Read whatever is available up to 1024 bytes
@@ -410,7 +433,9 @@ class SessionManagerPlugin:
         """Restore terminal settings if changed."""
         try:
             if self._orig_term_attrs and sys.stdin.isatty():
-                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._orig_term_attrs)
+                termios.tcsetattr(
+                    sys.stdin.fileno(), termios.TCSADRAIN, self._orig_term_attrs
+                )
                 self.logger.debug("Terminal settings restored")
         except Exception as e:
             self.logger.debug(f"Failed to restore terminal: {e}")
@@ -419,6 +444,7 @@ class SessionManagerPlugin:
         """Start periodic terminal size updates (every 500ms)."""
         if self._resize_task is not None and not self._resize_task.done():
             return
+
         async def _loop():
             try:
                 while not self._shutdown_event.is_set():
@@ -429,12 +455,15 @@ class SessionManagerPlugin:
                             and self._current_session.data_channel
                             and self._current_session.data_channel.is_open
                         ):
-                            await self._current_session.data_channel.send_terminal_size(cols, rows)
+                            await self._current_session.data_channel.send_terminal_size(
+                                cols, rows
+                            )
                     except Exception:
                         pass
                     await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 pass
+
         self._resize_task = asyncio.create_task(_loop())
 
     async def _stop_resize_heartbeat(self) -> None:
@@ -537,7 +566,9 @@ def connect(ctx: click.Context, json_input: str | None, **kwargs: Any) -> None:
 
 
 @cli.command()
-@click.option("--target", required=True, help="Target EC2 instance or managed instance ID")
+@click.option(
+    "--target", required=True, help="Target EC2 instance or managed instance ID"
+)
 @click.option("--document-name", help="SSM document name")
 @click.option("--parameters", help="Session parameters (JSON)")
 @click.option("--profile", help="AWS profile")
@@ -547,7 +578,7 @@ def connect(ctx: click.Context, json_input: str | None, **kwargs: Any) -> None:
 def ssh(ctx: click.Context, **kwargs: Any) -> None:
     """
     Start an interactive SSH-like session with AWS SSM.
-    
+
     This command uses AWS SSM APIs to create a new session and then
     connects to it automatically.
     """

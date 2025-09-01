@@ -31,4 +31,3 @@ MESSAGE_ACKNOWLEDGE = "acknowledge"
 MESSAGE_CHANNEL_CLOSED = "channel_closed"
 MESSAGE_START_PUBLICATION = "start_publication"
 MESSAGE_PAUSE_PUBLICATION = "pause_publication"
-
