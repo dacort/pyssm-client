@@ -32,6 +32,7 @@ class SessionManagerPlugin:
         self._current_session: Optional[Any] = None
         self._shutdown_event = asyncio.Event()
         self._orig_term_attrs: Optional[list[int]] = None
+        self._resize_task: Optional[asyncio.Task] = None
 
     async def run_session(self, args: ConnectArguments) -> int:
         """Run a session with the provided arguments."""
@@ -85,6 +86,7 @@ class SessionManagerPlugin:
             if sys.stdin.isatty():
                 self._enter_cbreak_noecho()
                 await self._send_initial_terminal_size()
+                self._start_resize_heartbeat()
 
             # Wait for session completion or shutdown signal
             await self._wait_for_completion()
@@ -258,6 +260,8 @@ class SessionManagerPlugin:
                     loop.remove_reader(stdin_fd)
                 except Exception:
                     pass
+            # Stop resize heartbeat
+            await self._stop_resize_heartbeat()
             if stdin_task:
                 stdin_task.cancel()
                 try:
@@ -346,6 +350,38 @@ class SessionManagerPlugin:
                 self.logger.debug("Terminal settings restored")
         except Exception as e:
             self.logger.debug(f"Failed to restore terminal: {e}")
+
+    def _start_resize_heartbeat(self) -> None:
+        """Start periodic terminal size updates (every 500ms)."""
+        if self._resize_task is not None and not self._resize_task.done():
+            return
+        async def _loop():
+            try:
+                while not self._shutdown_event.is_set():
+                    try:
+                        cols, rows = shutil.get_terminal_size(fallback=(80, 24))
+                        if (
+                            self._current_session
+                            and self._current_session.data_channel
+                            and self._current_session.data_channel.is_open
+                        ):
+                            await self._current_session.data_channel.send_terminal_size(cols, rows)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                pass
+        self._resize_task = asyncio.create_task(_loop())
+
+    async def _stop_resize_heartbeat(self) -> None:
+        """Stop periodic terminal size updates."""
+        if self._resize_task and not self._resize_task.done():
+            self._resize_task.cancel()
+            try:
+                await self._resize_task
+            except asyncio.CancelledError:
+                pass
+        self._resize_task = None
 
 
 # Click CLI interface with subcommands

@@ -23,6 +23,7 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 2. Honor start/pause publication for input
    - Handle `start_publication` / `pause_publication` message types; toggle an `input_allowed` flag; skip sending input when paused.
    - Verification: Session should remain interactive; if pause messages occur, input should temporarily stop (hard to simulate; basic regression is sufficient).
+   - Status: DONE (verified)
 
 3. Periodic resize heartbeat
    - Add a 500ms loop that sends terminal size while connected (as Go does), in addition to on SIGWINCH.
