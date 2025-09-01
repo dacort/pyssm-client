@@ -107,8 +107,8 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 
 ## Next Up (Implement in this order)
 
-- [ ] 1) Centralize message names and payload types
-- [ ] 2) Unify message serialization helpers
+- [x] 1) Centralize message names and payload types
+- [x] 2) Unify message serialization helpers
 - [ ] 3) Trim unused dependencies (`pydantic`)
 - [ ] 4) CLI flag for input coalescing
 - [ ] 5) Async signal handling on Unix
