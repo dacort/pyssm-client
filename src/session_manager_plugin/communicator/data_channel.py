@@ -43,6 +43,8 @@ class SessionDataChannel(IDataChannel):
         self._input_buffer = bytearray()
         self._flush_task: Optional[asyncio.Task] = None  # type: ignore[name-defined]
         self._flush_delay_sec: float = 0.01
+        # Out-of-order output buffering
+        self._incoming_buffer: Dict[int, bytes] = {}
 
     async def open(self) -> bool:
         """Open the data channel connection."""
@@ -255,14 +257,20 @@ class SessionDataChannel(IDataChannel):
                             self.logger.debug("Received pause_publication; input paused")
                             message_processed = True
                         elif client_message.is_shell_output():
-                            shell_data = client_message.get_shell_data()
-                            if shell_data and self._input_handler:
-                                # Send only the shell content as bytes
-                                self._input_handler(shell_data.encode('utf-8'))
+                            seq = client_message.sequence_number
+                            if seq == self._expected_sequence_number:
+                                # Display now
+                                shell_data = client_message.get_shell_data()
+                                if shell_data and self._input_handler:
+                                    self._input_handler(shell_data.encode('utf-8'))
+                                message_processed = True
+                            elif seq > self._expected_sequence_number:
+                                # Buffer for later; still ack
+                                self._incoming_buffer[seq] = message.data  # type: ignore[arg-type]
                                 message_processed = True
                             else:
-                                # Other message types: acknowledge but do not display
-                                message_processed = True
+                                # Old message; ignore
+                                message_processed = False
                         
                         # Handle AWS SSM sequence tracking properly
                         if message_processed:
@@ -277,8 +285,10 @@ class SessionDataChannel(IDataChannel):
                                     self.logger.debug(
                                         f"Updated expected sequence to {self._expected_sequence_number}"
                                     )
+                                    # Process any buffered messages now in order
+                                    self._drain_buffered_output()
                                 elif client_message.sequence_number > self._expected_sequence_number:
-                                    # Out-of-order; keep expected and rely on agent resends
+                                    # Out-of-order; keep expected and rely on buffered processing
                                     self.logger.debug(
                                         f"Received future sequence {client_message.sequence_number}, expected {self._expected_sequence_number}"
                                     )
@@ -299,6 +309,21 @@ class SessionDataChannel(IDataChannel):
 
         except Exception as e:
             self.logger.error(f"Error handling message: {e}")
+
+    def _drain_buffered_output(self) -> None:
+        """Print buffered output messages in order starting from expected sequence."""
+        try:
+            while self._expected_sequence_number in self._incoming_buffer:
+                raw = self._incoming_buffer.pop(self._expected_sequence_number)
+                cm = parse_client_message(raw)
+                if cm and cm.is_shell_output():
+                    shell_data = cm.get_shell_data()
+                    if shell_data and self._input_handler:
+                        self._input_handler(shell_data.encode('utf-8'))
+                self._expected_sequence_number += 1
+                self.logger.debug(f"Drained buffered seq; expected now {self._expected_sequence_number}")
+        except Exception as e:
+            self.logger.debug(f"Drain buffer failed: {e}")
 
     def _handle_error(self, error: Exception) -> None:
         """Handle WebSocket errors."""

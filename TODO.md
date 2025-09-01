@@ -48,6 +48,11 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 7. Input coalescing (optional)
    - Coalesce keystrokes into short bursts (≈10ms) or until CR/size threshold. Control bytes (Ctrl-C/Z/\) flush immediately. Disabled by default; enabled automatically only for non‑TTY stdin to avoid interactive lag.
    - Verification: With normal TTY sessions, interactivity remains snappy (no lag). With piped input, debug logs show fewer input messages.
+   - Status: DONE (verified)
+
+8. Out-of-order output buffering (optional)
+   - Buffer future `output_stream_data` frames by sequence and print them in order starting from the expected sequence; still ack on receipt.
+   - Verification: No functional change under normal conditions. Under out-of-order delivery, output should appear correctly ordered.
 6. Handle SessionType from HandshakeRequest
    - Parse `RequestedClientActions` where `ActionType == SessionType`, store session type and properties, and include in diagnostics.
    - Verification: Start a session with `-v` and confirm a log like `Handshake: session_type=<value>` appears after handshake.
