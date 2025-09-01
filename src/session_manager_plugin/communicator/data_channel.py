@@ -27,8 +27,8 @@ class SessionDataChannel(IDataChannel):
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
         self._initial_output_received = False
-        # Outbound input sequence number (SSM expects monotonically increasing values)
-        self._out_seq = 1
+        # Outbound input sequence number (SSM expects monotonically increasing values starting at 0)
+        self._out_seq = 0
 
     async def open(self) -> bool:
         """Open the data channel connection."""

@@ -222,15 +222,27 @@ class SessionManagerPlugin:
     async def _wait_for_completion(self) -> None:
         """Wait for session completion or shutdown signal."""
         # Set up stdin reader for interactive sessions
+        loop = asyncio.get_event_loop()
+        stdin_task = None
+        stdin_fd = None
         if sys.stdin.isatty():
-            stdin_task = asyncio.create_task(self._handle_stdin_input())
-        else:
-            stdin_task = None
-
+            try:
+                stdin_fd = sys.stdin.fileno()
+                loop.add_reader(stdin_fd, self._on_stdin_ready)
+                self.logger.debug("Registered stdin reader")
+            except Exception as e:
+                self.logger.debug(f"Failed to add_reader for stdin: {e}; falling back to thread reader")
+                stdin_task = asyncio.create_task(self._handle_stdin_input())
+        
         try:
             # Wait for shutdown signal
             await self._shutdown_event.wait()
         finally:
+            if stdin_fd is not None:
+                try:
+                    loop.remove_reader(stdin_fd)
+                except Exception:
+                    pass
             if stdin_task:
                 stdin_task.cancel()
                 try:
@@ -266,6 +278,24 @@ class SessionManagerPlugin:
             self.logger.error(f"Error handling stdin: {e}")
         finally:
             await self._initiate_shutdown()
+
+    def _on_stdin_ready(self) -> None:
+        """Callback when stdin has data; reads and forwards to data channel."""
+        try:
+            if not (self._current_session and self._current_session.data_channel and self._current_session.data_channel.is_open):
+                return
+            fd = sys.stdin.fileno()
+            # Read whatever is available up to 1024 bytes
+            data = os.read(fd, 1024)
+            if not data:
+                # EOF
+                asyncio.get_event_loop().create_task(self._initiate_shutdown())
+                return
+            asyncio.get_event_loop().create_task(
+                self._current_session.data_channel.send_input_data(data)
+            )
+        except Exception as e:
+            self.logger.error(f"stdin read error: {e}")
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
