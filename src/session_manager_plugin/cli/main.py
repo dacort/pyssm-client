@@ -253,15 +253,28 @@ class SessionManagerPlugin:
                     self._current_session.data_channel.send_input_data(b"\x1a")
                 )
 
-        signal.signal(signal.SIGINT, sigint_handler)
-        signal.signal(signal.SIGTERM, sigterm_handler)
-        if hasattr(signal, "SIGWINCH"):
-            signal.signal(signal.SIGWINCH, sigwinch_handler)
-        # Optional unix-only signals if present
-        if hasattr(signal, "SIGQUIT"):
-            signal.signal(signal.SIGQUIT, sigquit_handler)
-        if hasattr(signal, "SIGTSTP"):
-            signal.signal(signal.SIGTSTP, sigtstp_handler)
+        # Prefer asyncio loop signal handlers on Unix for better integration
+        try:
+            if hasattr(signal, "SIGINT"):
+                loop.add_signal_handler(signal.SIGINT, sigint_handler, signal.SIGINT, None)
+            if hasattr(signal, "SIGTERM"):
+                loop.add_signal_handler(signal.SIGTERM, sigterm_handler, signal.SIGTERM, None)
+            if hasattr(signal, "SIGWINCH"):
+                loop.add_signal_handler(signal.SIGWINCH, sigwinch_handler, signal.SIGWINCH, None)
+            if hasattr(signal, "SIGQUIT"):
+                loop.add_signal_handler(signal.SIGQUIT, sigquit_handler, signal.SIGQUIT, None)
+            if hasattr(signal, "SIGTSTP"):
+                loop.add_signal_handler(signal.SIGTSTP, sigtstp_handler, signal.SIGTSTP, None)
+        except (NotImplementedError, RuntimeError):
+            # Fallback to signal.signal when loop.add_signal_handler is unavailable (e.g., Windows)
+            signal.signal(signal.SIGINT, sigint_handler)
+            signal.signal(signal.SIGTERM, sigterm_handler)
+            if hasattr(signal, "SIGWINCH"):
+                signal.signal(signal.SIGWINCH, sigwinch_handler)
+            if hasattr(signal, "SIGQUIT"):
+                signal.signal(signal.SIGQUIT, sigquit_handler)
+            if hasattr(signal, "SIGTSTP"):
+                signal.signal(signal.SIGTSTP, sigtstp_handler)
 
     async def _send_initial_terminal_size(self) -> None:
         await self._send_terminal_size_update()
