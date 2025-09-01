@@ -38,6 +38,11 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 5. Improve channel_closed message
    - Include SessionId in the printed friendly message (use payload SessionId field when present).
    - Verification: Run `exit`; message should read `SessionId: <id> : <Output>` or `Exiting session with sessionId: <id>.`
+   - Status: DONE (verified)
+
+6. Handle SessionType from HandshakeRequest
+   - Parse `RequestedClientActions` where `ActionType == SessionType`, store session type and properties, and include in diagnostics.
+   - Verification: Start a session with `-v` and confirm a log like `Handshake: session_type=<value>` appears after handshake.
 
 ## Process / Instructions
 

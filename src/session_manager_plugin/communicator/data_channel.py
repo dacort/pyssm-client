@@ -35,6 +35,9 @@ class SessionDataChannel(IDataChannel):
         self._client_version: str = "python-session-manager-plugin/0.1.0"
         # Flow control: input gating
         self._input_allowed: bool = True
+        # Handshake session metadata
+        self._session_type: Optional[str] = None
+        self._session_properties: Optional[dict] = None
 
     async def open(self) -> bool:
         """Open the data channel connection."""
@@ -149,6 +152,9 @@ class SessionDataChannel(IDataChannel):
                                     self._input_handler((cust_msg + "\n").encode('utf-8'))
                             except Exception as e:
                                 self.logger.debug(f"Failed to parse HandshakeComplete payload: {e}")
+                            # Log session type if known
+                            if self._session_type:
+                                self.logger.info(f"Handshake: session_type={self._session_type}")
                             message_processed = True
                         elif client_message.payload_type == PayloadType.ENC_CHALLENGE_REQUEST:
                             # Not supported; log only
@@ -346,6 +352,16 @@ class SessionDataChannel(IDataChannel):
                     atype = action.get("ActionType")
                     processed = {"ActionType": atype, "ActionStatus": 1}  # Success
                     if atype == "SessionType":
+                        # Capture session type + properties
+                        ap = action.get("ActionParameters") or {}
+                        if isinstance(ap, str):
+                            try:
+                                import json as _json2
+                                ap = _json2.loads(ap)
+                            except Exception:
+                                ap = {}
+                        self._session_type = ap.get("SessionType") or self._session_type or ""
+                        self._session_properties = ap.get("Properties") or {}
                         # Echo back minimal result
                         processed["ActionResult"] = action.get("ActionParameters")
                     elif atype == "KMSEncryption":
