@@ -262,8 +262,9 @@ class SessionManagerPlugin:
 
     async def _initiate_shutdown(self) -> None:
         """Initiate graceful shutdown."""
-        self.logger.info("Initiating shutdown...")
-        self._shutdown_event.set()
+        if not self._shutdown_event.is_set():
+            self.logger.info("Initiating shutdown...")
+            self._shutdown_event.set()
 
     async def _wait_for_completion(self) -> None:
         """Wait for session completion or shutdown signal."""

@@ -32,7 +32,12 @@ This file tracks gaps vs. the upstream Go session-manager-plugin and a step-by-s
 4. Forward SIGQUIT and SIGTSTP
    - Map SIGQUIT to `\x1c` and SIGTSTP to `\x1a` (Unix); forward like SIGINT.
    - Verification: Pressing Ctrl-\ or Ctrl-Z should be forwarded to the remote (behavior may depend on shell/remote policy).
-   - Status: DONE (pending your verification)
+   - Terminal config note: also disabled `ISIG` in cbreak mode so the local terminal does not handle Ctrl-C/Z/\.
+   - Status: DONE (verified)
+
+5. Improve channel_closed message
+   - Include SessionId in the printed friendly message (use payload SessionId field when present).
+   - Verification: Run `exit`; message should read `SessionId: <id> : <Output>` or `Exiting session with sessionId: <id>.`
 
 ## Process / Instructions
 

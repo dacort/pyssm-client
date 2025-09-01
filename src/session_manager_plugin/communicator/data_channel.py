@@ -161,16 +161,19 @@ class SessionDataChannel(IDataChannel):
                                 import json as _json
                                 payload = _json.loads(client_message.payload.decode('utf-8', errors='ignore'))
                                 output = payload.get('Output') or payload.get('output') or "Session closed."
+                                sess_id = payload.get('SessionId') or payload.get('sessionId')
                             except Exception:
                                 output = "Session closed."
-                            if self._input_handler:
-                                self._input_handler(("\n\n" + str(output) + "\n\n").encode('utf-8'))
-                            # Trigger close
-                            if self._closed_handler:
-                                try:
-                                    self._closed_handler()
-                                except Exception:
-                                    pass
+                                sess_id = None
+                            if not getattr(self, "_closed_message_printed", False) and self._input_handler:
+                                if sess_id:
+                                    msg = f"\n\nSessionId: {sess_id} : {output}\n\n"
+                                else:
+                                    msg = f"\n\n{output}\n\n"
+                                self._input_handler(msg.encode('utf-8'))
+                                self._closed_message_printed = True
+                            # Trigger close once
+                            self._trigger_closed()
                             message_processed = True
                         elif client_message.message_type.strip() == "start_publication":
                             self._input_allowed = True
@@ -234,11 +237,19 @@ class SessionDataChannel(IDataChannel):
         """Handle connection state changes."""
         self.logger.info(f"Data channel connection state: {state.value}")
         if state in (ConnectionState.CLOSED, ConnectionState.ERROR):
-            try:
-                if self._closed_handler:
-                    self._closed_handler()
-            except Exception as e:
-                self.logger.debug(f"Closed handler error: {e}")
+            self._trigger_closed()
+
+    def _trigger_closed(self) -> None:
+        """Invoke closed handler exactly once."""
+        if getattr(self, "_closed_invoked", False):
+            return
+        # Initialize guard attributes if missing (for forward compatibility)
+        self._closed_invoked = True
+        try:
+            if self._closed_handler:
+                self._closed_handler()
+        except Exception as e:
+            self.logger.debug(f"Closed handler error: {e}")
 
     def get_channel_info(self) -> Dict[str, Any]:
         """Get channel information."""
