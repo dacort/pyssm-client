@@ -12,7 +12,7 @@ from .protocol import (
     parse_client_message,
     create_acknowledge_message,
     PayloadType,
-    serialize_client_message_with_payload_type,
+    serialize_client_message,
     MESSAGE_INPUT_STREAM,
     MESSAGE_OUTPUT_STREAM,
     MESSAGE_ACKNOWLEDGE,
@@ -496,15 +496,15 @@ class SessionDataChannel(IDataChannel):
         seq = self._out_seq
         self._out_seq += 1
 
-        return serialize_client_message_with_payload_type(
-            message_type=MESSAGE_INPUT_STREAM, 
+        return serialize_client_message(
+            message_type=MESSAGE_INPUT_STREAM,
             schema_version=1,
             created_date=created_date,
             sequence_number=seq,
             flags=0,
             message_id=message_uuid.bytes,
+            payload=input_data,
             payload_type=payload_type,
-            payload=input_data
         )
     
     def _schedule_shell_input(self, data: bytes) -> None:
