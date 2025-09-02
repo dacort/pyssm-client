@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..file_transfer.types import (
+    ChecksumType,
     FileTransferDirection,
     FileTransferEncoding,
-    ChecksumType,
 )
 
 

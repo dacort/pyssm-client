@@ -12,14 +12,23 @@ import tty
 from typing import Any, Callable, Optional
 
 import click
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 from ..communicator.data_channel import SessionDataChannel
 from ..communicator.utils import create_websocket_config
 from ..constants import CLIENT_VERSION
+from ..exec import run_command_sync
+from ..file_transfer.client import FileTransferClient
+from ..file_transfer.types import (
+    ChecksumType,
+    FileTransferEncoding,
+    FileTransferOptions,
+)
+from ..session.plugins import StandardStreamPlugin
 from ..session.session_handler import SessionHandler
 from ..session.types import ClientConfig, SessionConfig, SessionType
 from ..utils.logging import get_logger, setup_logging
-from ..exec import run_command_sync
 from .types import ConnectArguments, SSHArguments, FileCopyArguments
 
 
@@ -211,8 +220,6 @@ class SessionManagerPlugin:
 
     async def _register_session_plugins(self) -> None:
         """Register session type plugins."""
-        from ..session.plugins import StandardStreamPlugin
-
         registry = self._session_handler._registry
         registry.register_plugin("Standard_Stream", StandardStreamPlugin())
 
@@ -512,9 +519,6 @@ class SessionManagerPlugin:
         Returns:
             True if transfer successful, False otherwise
         """
-        from ..file_transfer.client import FileTransferClient
-        from ..file_transfer.types import FileTransferOptions
-
         options = FileTransferOptions(
             chunk_size=chunk_size,
             verify_checksum=verify_checksum,
@@ -561,9 +565,6 @@ class SessionManagerPlugin:
         Returns:
             True if transfer successful, False otherwise
         """
-        from ..file_transfer.client import FileTransferClient
-        from ..file_transfer.types import FileTransferOptions
-
         options = FileTransferOptions(
             chunk_size=chunk_size,
             verify_checksum=verify_checksum,
@@ -604,9 +605,6 @@ class SessionManagerPlugin:
         Returns:
             Checksum string if successful, None otherwise
         """
-        from ..file_transfer.client import FileTransferClient
-        from ..file_transfer.types import ChecksumType
-
         checksum_enum = (
             ChecksumType.MD5 if checksum_type.lower() == "md5" else ChecksumType.SHA256
         )
@@ -728,9 +726,6 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
     connects to it automatically.
     """
     try:
-        import boto3
-        from botocore.exceptions import BotoCoreError, ClientError
-
         # Parse arguments
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         ssh_args = SSHArguments(**filtered_kwargs)
@@ -848,13 +843,6 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
       session-manager-plugin copy i-1234567890abcdef0:/etc/hosts ./remote_hosts
     """
     try:
-        from ..file_transfer.client import FileTransferClient
-        from ..file_transfer.types import (
-            FileTransferEncoding,
-            FileTransferOptions,
-            ChecksumType,
-        )
-
         # Parse scp-style arguments
         filtered_kwargs = {
             k.replace("-", "_"): v for k, v in kwargs.items() if v is not None

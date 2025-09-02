@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 import uuid
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 
 from ..session.protocols import IDataChannel
 from ..utils.logging import get_logger
@@ -143,19 +145,17 @@ class SessionDataChannel(IDataChannel):
 
     def _schedule_flush(self) -> None:
         try:
-            import asyncio as _asyncio
-
             if self._flush_task and not self._flush_task.done():
                 self._flush_task.cancel()
 
             async def _wait_and_flush():
                 try:
-                    await _asyncio.sleep(self._flush_delay_sec)
+                    await asyncio.sleep(self._flush_delay_sec)
                     await self._flush_input_buffer()
-                except _asyncio.CancelledError:
+                except asyncio.CancelledError:
                     pass
 
-            self._flush_task = _asyncio.create_task(_wait_and_flush())
+            self._flush_task = asyncio.create_task(_wait_and_flush())
         except Exception as e:
             self.logger.debug(f"Failed to schedule flush: {e}")
 
@@ -250,9 +250,7 @@ class SessionDataChannel(IDataChannel):
                         ):
                             # Optionally display customer message
                             try:
-                                import json as _json
-
-                                payload = _json.loads(
+                                payload = json.loads(
                                     client_message.payload.decode(
                                         "utf-8", errors="ignore"
                                     )
@@ -297,9 +295,7 @@ class SessionDataChannel(IDataChannel):
                         ):
                             # Friendly notice then close
                             try:
-                                import json as _json
-
-                                payload = _json.loads(
+                                payload = json.loads(
                                     client_message.payload.decode(
                                         "utf-8", errors="ignore"
                                     )
@@ -512,8 +508,6 @@ class SessionDataChannel(IDataChannel):
 
     def _schedule_acknowledgment(self, original_message) -> None:
         """Schedule acknowledgment message to be sent asynchronously."""
-        import asyncio
-
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -524,8 +518,6 @@ class SessionDataChannel(IDataChannel):
         loop.create_task(self._send_acknowledgment(original_message))
 
     def _schedule_handshake_response(self, original_message) -> None:
-        import asyncio
-
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -561,8 +553,6 @@ class SessionDataChannel(IDataChannel):
     async def _send_handshake_response(self, original_message) -> None:
         """Send HandshakeResponse payload for a HandshakeRequest."""
         try:
-            import json as _json
-
             # Default response with no processed actions
             response = {
                 "ClientVersion": CLIENT_VERSION,
@@ -572,7 +562,7 @@ class SessionDataChannel(IDataChannel):
 
             # Attempt to parse request and respond per action
             try:
-                request = _json.loads(
+                request = json.loads(
                     original_message.payload.decode("utf-8", errors="ignore")
                 )
                 actions = request.get("RequestedClientActions", [])
@@ -586,9 +576,7 @@ class SessionDataChannel(IDataChannel):
                         ap = action.get("ActionParameters") or {}
                         if isinstance(ap, str):
                             try:
-                                import json as _json2
-
-                                ap = _json2.loads(ap)
+                                ap = json.loads(ap)
                             except Exception:
                                 ap = {}
                         self._session_type = (
@@ -609,7 +597,7 @@ class SessionDataChannel(IDataChannel):
             except Exception as e:
                 self.logger.debug(f"Failed to parse HandshakeRequest payload: {e}")
 
-            payload = _json.dumps(response).encode("utf-8")
+            payload = json.dumps(response).encode("utf-8")
             msg = self._serialize_input_message_with_payload_type(
                 payload, PayloadType.HANDSHAKE_RESPONSE
             )
@@ -623,9 +611,6 @@ class SessionDataChannel(IDataChannel):
         self, input_data: bytes, payload_type: int
     ) -> bytes:
         """Serialize input message with specific payload type."""
-        import time
-        import uuid
-
         # Note: line ending normalization handled earlier
         message_uuid = uuid.uuid4()
         created_date = int(time.time() * 1000)

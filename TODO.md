@@ -107,10 +107,17 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 10) Optional outgoing resend buffer
    - Only if needed; otherwise omit for simplicity with WebSocket reliability.
 
-## Next Up (Implement in this order)
+## Code Quality Improvements (Completed)
 
 - [x] 1) Centralize message names and payload types
 - [x] 2) Unify message serialization helpers
 - [x] 3) Trim unused dependencies (`pydantic`)
 - [x] 4) CLI flag for input coalescing
 - [x] 5) Async signal handling on Unix
+- [x] 6) **Import Architecture Cleanup** - Moved standard library imports to module level, eliminated repeated imports in CLI (4x FileTransferClient) and data_channel (3x+ json/asyncio), preserved strategic function-level imports only where needed to prevent circular dependencies
+
+## Remaining Code Quality Tasks
+
+- [ ] Extract oversized CLI class (1033 lines) into separate modules
+- [ ] Improve error handling with specific exception types
+- [ ] Add pre-commit hooks for automated code quality

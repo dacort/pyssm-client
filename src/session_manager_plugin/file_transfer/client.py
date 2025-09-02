@@ -11,8 +11,8 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from ..communicator.utils import create_websocket_config
-from ..utils.logging import get_logger
 from ..exec import run_command
+from ..utils.logging import get_logger
 from .types import ChecksumType, FileChecksum, FileTransferEncoding, FileTransferOptions
 
 
@@ -272,7 +272,7 @@ class FileTransferClient:
     async def _setup_data_channel(self, session_data: dict) -> Any:
         """Set up data channel for file transfer."""
         from ..communicator.data_channel import SessionDataChannel
-
+        
         websocket_config = create_websocket_config(
             stream_url=session_data["stream_url"], token=session_data["token_value"]
         )

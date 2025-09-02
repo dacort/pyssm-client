@@ -6,6 +6,7 @@ from typing import List
 
 from ...utils.logging import get_logger
 from ..protocols import ISessionPlugin
+from ..registry import get_session_registry
 from .interactive_commands import InteractiveCommandsPlugin
 from .port import PortSessionPlugin
 from .standard_stream import StandardStreamPlugin
@@ -26,8 +27,6 @@ def create_default_plugins() -> List[ISessionPlugin]:
 
 def register_default_plugins() -> None:
     """Register all default plugins with the global registry."""
-    from ..registry import get_session_registry
-
     registry = get_session_registry()
     plugins = create_default_plugins()
 
