@@ -9,7 +9,7 @@ from .utils import create_default_plugins, register_default_plugins
 
 __all__ = [
     "BaseSessionPlugin",
-    "StandardStreamPlugin", 
+    "StandardStreamPlugin",
     "PortSessionPlugin",
     "InteractiveCommandsPlugin",
     "FileTransferSession",

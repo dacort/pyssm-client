@@ -496,7 +496,7 @@ class SessionManagerPlugin:
         endpoint_url: Optional[str] = None,
     ) -> bool:
         """Upload a file to remote host via AWS SSM.
-        
+
         Args:
             local_path: Path to local file
             remote_path: Destination path on remote host
@@ -507,19 +507,19 @@ class SessionManagerPlugin:
             profile: AWS profile name
             region: AWS region
             endpoint_url: Custom AWS endpoint URL
-            
+
         Returns:
             True if transfer successful, False otherwise
         """
         from ..file_transfer.client import FileTransferClient
         from ..file_transfer.types import FileTransferOptions
-        
+
         options = FileTransferOptions(
             chunk_size=chunk_size,
             verify_checksum=verify_checksum,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
-        
+
         client = FileTransferClient()
         return await client.upload_file(
             local_path=local_path,
@@ -528,7 +528,7 @@ class SessionManagerPlugin:
             options=options,
             profile=profile,
             region=region,
-            endpoint_url=endpoint_url
+            endpoint_url=endpoint_url,
         )
 
     async def download_file(
@@ -545,7 +545,7 @@ class SessionManagerPlugin:
         endpoint_url: Optional[str] = None,
     ) -> bool:
         """Download a file from remote host via AWS SSM.
-        
+
         Args:
             remote_path: Path to remote file
             local_path: Local destination path
@@ -556,19 +556,19 @@ class SessionManagerPlugin:
             profile: AWS profile name
             region: AWS region
             endpoint_url: Custom AWS endpoint URL
-            
+
         Returns:
             True if transfer successful, False otherwise
         """
         from ..file_transfer.client import FileTransferClient
         from ..file_transfer.types import FileTransferOptions
-        
+
         options = FileTransferOptions(
             chunk_size=chunk_size,
             verify_checksum=verify_checksum,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
-        
+
         client = FileTransferClient()
         return await client.download_file(
             remote_path=remote_path,
@@ -577,7 +577,7 @@ class SessionManagerPlugin:
             options=options,
             profile=profile,
             region=region,
-            endpoint_url=endpoint_url
+            endpoint_url=endpoint_url,
         )
 
     async def verify_remote_file(
@@ -591,7 +591,7 @@ class SessionManagerPlugin:
         endpoint_url: Optional[str] = None,
     ) -> Optional[str]:
         """Get checksum of remote file.
-        
+
         Args:
             remote_path: Path to remote file
             target: EC2 instance or managed instance ID
@@ -599,15 +599,17 @@ class SessionManagerPlugin:
             profile: AWS profile name
             region: AWS region
             endpoint_url: Custom AWS endpoint URL
-            
+
         Returns:
             Checksum string if successful, None otherwise
         """
         from ..file_transfer.client import FileTransferClient
         from ..file_transfer.types import ChecksumType
-        
-        checksum_enum = ChecksumType.MD5 if checksum_type.lower() == "md5" else ChecksumType.SHA256
-        
+
+        checksum_enum = (
+            ChecksumType.MD5 if checksum_type.lower() == "md5" else ChecksumType.SHA256
+        )
+
         client = FileTransferClient()
         return await client.verify_remote_file(
             remote_path=remote_path,
@@ -615,7 +617,7 @@ class SessionManagerPlugin:
             checksum_type=checksum_enum,
             profile=profile,
             region=region,
-            endpoint_url=endpoint_url
+            endpoint_url=endpoint_url,
         )
 
 
@@ -796,32 +798,28 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 
 @cli.command()
 @click.argument("source")
-@click.argument("destination") 
+@click.argument("destination")
 @click.option(
     "--encoding",
     type=click.Choice(["base64", "raw", "uuencode"], case_sensitive=False),
     default="base64",
     show_default=True,
-    help="Transfer encoding method"
+    help="Transfer encoding method",
 )
 @click.option(
     "--chunk-size",
     type=int,
     default=65536,
     show_default=True,
-    help="Transfer chunk size in bytes"
+    help="Transfer chunk size in bytes",
 )
-@click.option(
-    "--no-verify",
-    is_flag=True,
-    help="Skip checksum verification"
-)
+@click.option("--no-verify", is_flag=True, help="Skip checksum verification")
 @click.option(
     "--checksum-type",
     type=click.Choice(["md5", "sha256"], case_sensitive=False),
     default="md5",
     show_default=True,
-    help="Checksum algorithm for verification"
+    help="Checksum algorithm for verification",
 )
 @click.option("--profile", help="AWS profile")
 @click.option("--region", help="AWS region")
@@ -832,19 +830,19 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
     """
     Copy files to/from remote hosts via AWS SSM using scp-like syntax.
-    
+
     Use TARGET:PATH for remote files and local paths for local files.
-    
+
     Examples:
       # Upload a file (local to remote)
       session-manager-plugin copy ./file.txt i-1234567890abcdef0:/tmp/file.txt
-      
+
       # Download a file (remote to local)
       session-manager-plugin copy i-1234567890abcdef0:/var/log/app.log ./app.log
-      
-      # Upload to remote home directory  
+
+      # Upload to remote home directory
       session-manager-plugin copy ./document.pdf i-1234567890abcdef0:~/document.pdf
-      
+
       # Download with different local name
       session-manager-plugin copy i-1234567890abcdef0:/etc/hosts ./remote_hosts
     """
@@ -853,68 +851,90 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
         from ..file_transfer.types import (
             FileTransferEncoding,
             FileTransferOptions,
-            ChecksumType
+            ChecksumType,
         )
-        
+
         # Parse scp-style arguments
-        filtered_kwargs = {k.replace('-', '_'): v for k, v in kwargs.items() if v is not None}
-        
+        filtered_kwargs = {
+            k.replace("-", "_"): v for k, v in kwargs.items() if v is not None
+        }
+
         # Convert string enums to enum types
-        if 'encoding' in filtered_kwargs:
+        if "encoding" in filtered_kwargs:
             encoding_map = {
-                'base64': FileTransferEncoding.BASE64,
-                'raw': FileTransferEncoding.RAW,
-                'uuencode': FileTransferEncoding.UUENCODE
+                "base64": FileTransferEncoding.BASE64,
+                "raw": FileTransferEncoding.RAW,
+                "uuencode": FileTransferEncoding.UUENCODE,
             }
-            filtered_kwargs['encoding'] = encoding_map[filtered_kwargs['encoding'].lower()]
-        if 'checksum_type' in filtered_kwargs:
-            checksum_map = {
-                'md5': ChecksumType.MD5,
-                'sha256': ChecksumType.SHA256
-            }
-            filtered_kwargs['checksum_type'] = checksum_map[filtered_kwargs['checksum_type'].lower()]
-            
+            filtered_kwargs["encoding"] = encoding_map[
+                filtered_kwargs["encoding"].lower()
+            ]
+        if "checksum_type" in filtered_kwargs:
+            checksum_map = {"md5": ChecksumType.MD5, "sha256": ChecksumType.SHA256}
+            filtered_kwargs["checksum_type"] = checksum_map[
+                filtered_kwargs["checksum_type"].lower()
+            ]
+
         # Handle verify flag
-        filtered_kwargs['verify_checksum'] = not filtered_kwargs.pop('no_verify', False)
-        filtered_kwargs['show_progress'] = not (filtered_kwargs.pop('quiet', False) or filtered_kwargs.pop('no_progress', False))
-        
+        filtered_kwargs["verify_checksum"] = not filtered_kwargs.pop("no_verify", False)
+        filtered_kwargs["show_progress"] = not (
+            filtered_kwargs.pop("quiet", False)
+            or filtered_kwargs.pop("no_progress", False)
+        )
+
         # Create FileCopyArguments using scp-style parsing
-        copy_args = FileCopyArguments.from_scp_style(source, destination, **filtered_kwargs)
-        
+        copy_args = FileCopyArguments.from_scp_style(
+            source, destination, **filtered_kwargs
+        )
+
         # Validate arguments
         errors = copy_args.validate()
         if errors:
             for error in errors:
                 click.echo(f"Error: {error}", err=True)
             sys.exit(1)
-            
+
         # Set up progress callback if enabled
         progress_callback = None
         if copy_args.show_progress and not copy_args.quiet:
+
             def show_progress(bytes_transferred: int, total_bytes: int) -> None:
                 if total_bytes > 0:
                     percentage = (bytes_transferred / total_bytes) * 100
-                    click.echo(f"\rProgress: {bytes_transferred}/{total_bytes} bytes ({percentage:.1f}%)", nl=False)
+                    click.echo(
+                        f"\rProgress: {bytes_transferred}/{total_bytes} bytes ({percentage:.1f}%)",
+                        nl=False,
+                    )
+
             progress_callback = show_progress
-        
+
         # Create transfer options
         options = FileTransferOptions(
             chunk_size=copy_args.chunk_size,
             encoding=copy_args.encoding,
             verify_checksum=copy_args.verify_checksum,
             checksum_type=copy_args.checksum_type,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
-        
+
         # Execute file transfer
         client = FileTransferClient()
-        
+
         async def run_transfer() -> bool:
             if copy_args.is_upload:
-                if not copy_args.local_path or not copy_args.remote_path or not copy_args.target:
-                    click.echo("Error: Upload requires valid local_path, remote_path, and target", err=True)
+                if (
+                    not copy_args.local_path
+                    or not copy_args.remote_path
+                    or not copy_args.target
+                ):
+                    click.echo(
+                        "Error: Upload requires valid local_path, remote_path, and target",
+                        err=True,
+                    )
                     return False
-                click.echo(f"Uploading {copy_args.local_path} to {copy_args.target}:{copy_args.remote_path}")
+                click.echo(
+                    f"Uploading {copy_args.local_path} to {copy_args.target}:{copy_args.remote_path}"
+                )
                 return await client.upload_file(
                     local_path=copy_args.local_path,
                     remote_path=copy_args.remote_path,
@@ -922,13 +942,22 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
                     options=options,
                     profile=copy_args.profile,
                     region=copy_args.region,
-                    endpoint_url=copy_args.endpoint_url
+                    endpoint_url=copy_args.endpoint_url,
                 )
             else:  # download
-                if not copy_args.remote_path or not copy_args.local_path or not copy_args.target:
-                    click.echo("Error: Download requires valid remote_path, local_path, and target", err=True)
+                if (
+                    not copy_args.remote_path
+                    or not copy_args.local_path
+                    or not copy_args.target
+                ):
+                    click.echo(
+                        "Error: Download requires valid remote_path, local_path, and target",
+                        err=True,
+                    )
                     return False
-                click.echo(f"Downloading {copy_args.target}:{copy_args.remote_path} to {copy_args.local_path}")
+                click.echo(
+                    f"Downloading {copy_args.target}:{copy_args.remote_path} to {copy_args.local_path}"
+                )
                 return await client.download_file(
                     remote_path=copy_args.remote_path,
                     local_path=copy_args.local_path,
@@ -936,11 +965,11 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
                     options=options,
                     profile=copy_args.profile,
                     region=copy_args.region,
-                    endpoint_url=copy_args.endpoint_url
+                    endpoint_url=copy_args.endpoint_url,
                 )
-        
+
         success = asyncio.run(run_transfer())
-        
+
         if success:
             if copy_args.show_progress:
                 click.echo()  # New line after progress
@@ -949,7 +978,7 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
         else:
             click.echo("Transfer failed", err=True)
             sys.exit(1)
-            
+
     except Exception as e:
         click.echo(f"Fatal error: {e}", err=True)
         sys.exit(1)

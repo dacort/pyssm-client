@@ -5,7 +5,7 @@ from .types import FileTransferDirection, FileTransferEncoding, FileTransferOpti
 
 __all__ = [
     "FileTransferClient",
-    "FileTransferDirection", 
+    "FileTransferDirection",
     "FileTransferEncoding",
     "FileTransferOptions",
 ]
