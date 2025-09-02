@@ -795,16 +795,8 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 
 
 @cli.command()
-@click.option(
-    "--target", required=True, help="Target EC2 instance or managed instance ID"
-)
-@click.option("--local-path", help="Local file path")
-@click.option("--remote-path", help="Remote file path") 
-@click.option(
-    "--direction", 
-    type=click.Choice(["upload", "download"], case_sensitive=False),
-    help="Transfer direction (auto-detected if not specified)"
-)
+@click.argument("source")
+@click.argument("destination") 
 @click.option(
     "--encoding",
     type=click.Choice(["base64", "raw", "uuencode"], case_sensitive=False),
@@ -837,38 +829,37 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 @click.option("--quiet", "-q", is_flag=True, help="Suppress progress output")
 @click.option("--no-progress", is_flag=True, help="Disable progress bar")
 @click.pass_context
-def copy(ctx: click.Context, **kwargs) -> None:
+def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
     """
-    Copy files to/from remote hosts via AWS SSM.
+    Copy files to/from remote hosts via AWS SSM using scp-like syntax.
+    
+    Use TARGET:PATH for remote files and local paths for local files.
     
     Examples:
-      # Upload a file
-      session-manager-plugin copy --target i-1234567890abcdef0 --local-path ./file.txt --remote-path /tmp/file.txt
+      # Upload a file (local to remote)
+      session-manager-plugin copy ./file.txt i-1234567890abcdef0:/tmp/file.txt
       
-      # Download a file  
-      session-manager-plugin copy --target i-1234567890abcdef0 --remote-path /var/log/app.log --local-path ./app.log
+      # Download a file (remote to local)
+      session-manager-plugin copy i-1234567890abcdef0:/var/log/app.log ./app.log
       
-      # Auto-detect direction (upload if only --local-path given)
-      session-manager-plugin copy --target i-1234567890abcdef0 --local-path ./document.pdf
+      # Upload to remote home directory  
+      session-manager-plugin copy ./document.pdf i-1234567890abcdef0:~/document.pdf
       
-      # Auto-detect direction (download if only --remote-path given)
-      session-manager-plugin copy --target i-1234567890abcdef0 --remote-path /etc/hosts
+      # Download with different local name
+      session-manager-plugin copy i-1234567890abcdef0:/etc/hosts ./remote_hosts
     """
     try:
         from ..file_transfer.client import FileTransferClient
         from ..file_transfer.types import (
-            FileTransferDirection, 
             FileTransferEncoding,
             FileTransferOptions,
             ChecksumType
         )
         
-        # Parse arguments
+        # Parse scp-style arguments
         filtered_kwargs = {k.replace('-', '_'): v for k, v in kwargs.items() if v is not None}
         
         # Convert string enums to enum types
-        if 'direction' in filtered_kwargs:
-            filtered_kwargs['direction'] = FileTransferDirection(filtered_kwargs['direction'].lower())
         if 'encoding' in filtered_kwargs:
             encoding_map = {
                 'base64': FileTransferEncoding.BASE64,
@@ -887,7 +878,8 @@ def copy(ctx: click.Context, **kwargs) -> None:
         filtered_kwargs['verify_checksum'] = not filtered_kwargs.pop('no_verify', False)
         filtered_kwargs['show_progress'] = not (filtered_kwargs.pop('quiet', False) or filtered_kwargs.pop('no_progress', False))
         
-        copy_args = FileCopyArguments(**filtered_kwargs)
+        # Create FileCopyArguments using scp-style parsing
+        copy_args = FileCopyArguments.from_scp_style(source, destination, **filtered_kwargs)
         
         # Validate arguments
         errors = copy_args.validate()
@@ -919,8 +911,8 @@ def copy(ctx: click.Context, **kwargs) -> None:
         
         async def run_transfer() -> bool:
             if copy_args.is_upload:
-                if not copy_args.local_path or not copy_args.remote_path:
-                    click.echo("Error: Both local_path and remote_path required for upload", err=True)
+                if not copy_args.local_path or not copy_args.remote_path or not copy_args.target:
+                    click.echo("Error: Upload requires valid local_path, remote_path, and target", err=True)
                     return False
                 click.echo(f"Uploading {copy_args.local_path} to {copy_args.target}:{copy_args.remote_path}")
                 return await client.upload_file(
@@ -933,8 +925,8 @@ def copy(ctx: click.Context, **kwargs) -> None:
                     endpoint_url=copy_args.endpoint_url
                 )
             else:  # download
-                if not copy_args.remote_path or not copy_args.local_path:
-                    click.echo("Error: Both remote_path and local_path required for download", err=True)
+                if not copy_args.remote_path or not copy_args.local_path or not copy_args.target:
+                    click.echo("Error: Download requires valid remote_path, local_path, and target", err=True)
                     return False
                 click.echo(f"Downloading {copy_args.target}:{copy_args.remote_path} to {copy_args.local_path}")
                 return await client.download_file(
