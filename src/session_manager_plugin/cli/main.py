@@ -1,25 +1,25 @@
 """Main CLI interface for AWS Session Manager Plugin."""
 
 import asyncio
-import os
-import shutil
-import termios
-import tty
 import json
 import logging
+import os
+import shutil
 import signal
 import sys
+import termios
+import tty
 from typing import Any
 
 import click
 
-from .types import ConnectArguments, SSHArguments
 from ..communicator.data_channel import SessionDataChannel
-from ..constants import CLIENT_VERSION
 from ..communicator.utils import create_websocket_config
+from ..constants import CLIENT_VERSION
 from ..session.session_handler import SessionHandler
 from ..session.types import ClientConfig, SessionConfig, SessionType
 from ..utils.logging import get_logger, setup_logging
+from .types import ConnectArguments, SSHArguments
 
 
 class SessionManagerPlugin:
@@ -91,6 +91,12 @@ class SessionManagerPlugin:
                 self._enter_cbreak_noecho()
                 await self._send_initial_terminal_size()
                 self._start_resize_heartbeat()
+
+            # Send any initial input if provided, e.g. `exec bash`
+            if getattr(args, "initial_input", None):
+                await data_channel.send_input_data(
+                    f"{args.initial_input}\n".encode("utf-8")
+                )
 
             # Wait for session completion or shutdown signal
             await self._wait_for_completion()

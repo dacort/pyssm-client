@@ -36,6 +36,9 @@ class ConnectArguments:
     verbose: bool = False
     log_file: Optional[str] = None
 
+    # Additional client functionality
+    initial_input: Optional[str] = None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ConnectArguments:
         """Create ConnectArguments from dictionary (typically from AWS CLI)."""
@@ -53,6 +56,7 @@ class ConnectArguments:
             endpoint_url=data.get("endpointUrl"),
             verbose=data.get("verbose", False),
             log_file=data.get("logFile"),
+            initial_input=data.get("initialInput"),
         )
 
     def get_parameters_dict(self) -> Dict[str, Any]:
