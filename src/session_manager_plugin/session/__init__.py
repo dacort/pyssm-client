@@ -1,7 +1,6 @@
 """Session management module."""
 
-# Avoid circular import, import where needed instead
-# from .plugins import register_default_plugins
+from .plugins import register_default_plugins
 from .registry import get_session_registry, reset_session_registry
 from .session import Session
 from .session_handler import SessionHandler, SessionValidationError
@@ -24,5 +23,5 @@ __all__ = [
     "SessionStatus",
     "get_session_registry",
     "reset_session_registry",
-# "register_default_plugins",  # Import directly where needed to avoid circular imports
+    "register_default_plugins",
 ]
