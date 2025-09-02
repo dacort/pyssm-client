@@ -12,6 +12,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from ..communicator.utils import create_websocket_config
 from ..utils.logging import get_logger
+from ..exec import run_command
 from .types import ChecksumType, FileChecksum, FileTransferEncoding, FileTransferOptions
 
 
@@ -84,9 +85,12 @@ class FileTransferClient:
             if success and options.verify_checksum and local_checksum:
                 # Verify remote checksum
                 remote_checksum = await self._get_remote_checksum(
-                    data_channel=data_channel,
+                    target=target,
                     remote_path=remote_path,
                     checksum_type=options.checksum_type,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
                 )
 
                 if remote_checksum != local_checksum.value:
@@ -147,9 +151,12 @@ class FileTransferClient:
             remote_checksum = None
             if options.verify_checksum:
                 remote_checksum = await self._get_remote_checksum(
-                    data_channel=data_channel,
+                    target=target,
                     remote_path=remote_path,
                     checksum_type=options.checksum_type,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
                 )
                 self.logger.debug(
                     f"Remote {options.checksum_type.value}: {remote_checksum}"
@@ -215,9 +222,12 @@ class FileTransferClient:
             data_channel = await self._setup_data_channel(session_data)
 
             checksum = await self._get_remote_checksum(
-                data_channel=data_channel,
+                target=target,
                 remote_path=remote_path,
                 checksum_type=checksum_type,
+                profile=profile,
+                region=region,
+                endpoint_url=endpoint_url,
             )
 
             await data_channel.close()
@@ -293,102 +303,6 @@ class FileTransferClient:
 
         return data_channel
 
-    async def _execute_command_and_wait(
-        self, data_channel: Any, command: str, timeout: float = 8.0
-    ) -> str:
-        """Execute a command and wait for its actual output.
-
-        Args:
-            data_channel: Active data channel
-            command: Shell command to execute
-            timeout: Maximum wait time for command completion
-
-        Returns:
-            Command output as string
-
-        Raises:
-            RuntimeError: If command execution fails or times out
-        """
-        self.logger.debug(f"Executing command: {command}")
-
-        # Clear any accumulated data
-        data_channel._received_data.clear()  # type: ignore
-
-        # Send command and wait for shell to process
-        await data_channel.send_input_data(f"{command}\n".encode())
-
-        # Wait and collect output, looking for command result patterns
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            await asyncio.sleep(0.3)
-
-            all_data = b"".join(data_channel._received_data)  # type: ignore
-            output = all_data.decode("utf-8", errors="ignore")
-
-            self.logger.debug(
-                f"Output at {time.time() - start_time:.1f}s: {len(output)} chars"
-            )
-            self.logger.debug(f"Full output: {repr(output)}")
-
-            # For checksum commands, look for the actual checksum pattern in output
-            if command.startswith(("md5sum", "sha256sum")):
-                # Look for hex pattern (32 chars for MD5, 64 for SHA256) followed by filename
-                import re
-
-                checksum_pattern = r"([0-9a-fA-F]{32,64})\s+.*"
-                if re.search(checksum_pattern, output):
-                    self.logger.debug(
-                        f"Found checksum pattern in output after {time.time() - start_time:.2f}s"
-                    )
-                    break
-
-            # Generic completion: look for shell prompt at end
-            if (
-                output.endswith("$ ")
-                or output.endswith("$\n")
-                or (output.endswith("$") and len(output) > 20)
-            ):
-                self.logger.debug(
-                    f"Found shell prompt after {time.time() - start_time:.2f}s"
-                )
-                await asyncio.sleep(0.2)  # Give it a bit more time
-                break
-
-        # Get final output
-        all_data = b"".join(data_channel._received_data)  # type: ignore
-        output = all_data.decode("utf-8", errors="ignore")
-
-        self.logger.debug(f"Final command output: {repr(output)}")
-
-        # Look for actual command output (not echoes)
-        # Skip lines that are just command echoes and look for results
-        lines = output.split("\n")
-        result_lines = []
-
-        for line in lines:
-            line = line.strip()
-            # Remove ANSI escape sequences
-            import re
-
-            clean_line = re.sub(r"\x1b\[[?0-9;]*[a-zA-Z]", "", line)
-            clean_line = clean_line.strip()
-
-            # Skip command echoes and shell prompts but keep actual results
-            if (
-                clean_line
-                and not clean_line == command  # Skip exact command echo
-                and not clean_line.startswith("sh-")  # Skip shell prompts (sh-5.2$)
-                and not clean_line.endswith("$")  # Skip shell prompts
-                and not clean_line.startswith("echo ")  # Skip echo commands
-                and not clean_line.startswith("CMD_")  # Skip our markers
-                and clean_line != command.split()[0]
-            ):  # Skip command name only
-                result_lines.append(clean_line)
-
-        result = "\n".join(result_lines).strip()
-        self.logger.debug(f"Filtered command result: {repr(result)}")
-        return result
 
     async def _upload_file_data(
         self,
@@ -557,9 +471,9 @@ class FileTransferClient:
             return False
 
     async def _get_remote_checksum(
-        self, data_channel: Any, remote_path: str, checksum_type: ChecksumType
+        self, target: str, remote_path: str, checksum_type: ChecksumType, **aws_kwargs
     ) -> str:
-        """Get checksum of remote file."""
+        """Get checksum of remote file using exec API."""
         # Build checksum command
         if checksum_type == ChecksumType.MD5:
             cmd = f"md5sum '{remote_path}'"
@@ -569,71 +483,33 @@ class FileTransferClient:
             raise ValueError(f"Unsupported checksum type: {checksum_type}")
 
         self.logger.debug(f"Getting remote checksum with command: {cmd}")
+        self.logger.debug(f"Target: {target}, AWS kwargs: {aws_kwargs}")
 
-        # Clear buffer and send command
-        data_channel._received_data.clear()  # type: ignore
-        await data_channel.send_input_data(f"{cmd}\n".encode())
-
-        # Wait for checksum output with pattern matching
-        start_time = time.time()
-        timeout = 15.0  # Longer timeout
-        checksum_found = None
-
-        while time.time() - start_time < timeout:
-            await asyncio.sleep(0.2)
-
-            all_data = b"".join(data_channel._received_data)  # type: ignore
-            output = all_data.decode("utf-8", errors="ignore")
-
-            self.logger.debug(
-                f"Checksum search at {time.time() - start_time:.1f}s: {len(output)} chars"
-            )
-
-            # Look for checksum pattern anywhere in the output
-            import re
-
-            if checksum_type == ChecksumType.MD5:
-                pattern = r"([0-9a-fA-F]{32})\s+"  # 32 hex chars + whitespace
-            else:  # SHA256
-                pattern = r"([0-9a-fA-F]{64})\s+"  # 64 hex chars + whitespace
-
-            match = re.search(pattern, output)
-            if match:
-                checksum_found = match.group(1).lower()
-                self.logger.debug(f"Found checksum: {checksum_found}")
-                break
-
-            # Also check if we see shell prompt indicating command completed
-            if time.time() - start_time > 3.0 and (
-                "$" in output[-20:] or len(output) > 200
-            ):
-                self.logger.debug(f"Command seems complete, final search...")
-                break
-
-        # Final attempt to find checksum
-        if not checksum_found:
-            all_data = b"".join(data_channel._received_data)  # type: ignore
-            output = all_data.decode("utf-8", errors="ignore")
-
-            self.logger.debug(f"Final output for checksum search: {repr(output)}")
-
-            import re
-
-            if checksum_type == ChecksumType.MD5:
-                pattern = (
-                    r"([0-9a-fA-F]{32})"  # Just the hex, no whitespace requirement
-                )
-            else:  # SHA256
-                pattern = r"([0-9a-fA-F]{64})"
-
-            match = re.search(pattern, output)
-            if match:
-                checksum_found = match.group(1).lower()
-                self.logger.debug(f"Found checksum in final search: {checksum_found}")
-
-        if not checksum_found:
-            raise RuntimeError(
-                f"Could not find {checksum_type.value} checksum in output: {output}"
-            )
-
-        return checksum_found
+        # Execute command using clean exec API
+        result = await run_command(target=target, command=cmd, **aws_kwargs)
+        self.logger.debug(f"Exec result: {result}")
+        
+        if result.exit_code != 0:
+            stderr_text = result.stderr.decode("utf-8", errors="ignore")
+            raise RuntimeError(f"Checksum command failed (exit {result.exit_code}): {stderr_text}")
+        
+        # Parse checksum from clean stdout
+        stdout_text = result.stdout.decode("utf-8", errors="ignore").strip()
+        
+        if not stdout_text:
+            raise RuntimeError("No output from checksum command")
+        
+        # Extract checksum (first part before whitespace)
+        parts = stdout_text.split()
+        if not parts:
+            raise RuntimeError(f"Could not parse checksum from output: {stdout_text}")
+            
+        checksum = parts[0].lower()
+        
+        # Validate checksum format
+        expected_length = 32 if checksum_type == ChecksumType.MD5 else 64
+        if len(checksum) != expected_length or not all(c in '0123456789abcdef' for c in checksum):
+            raise RuntimeError(f"Invalid {checksum_type.value} checksum format: {checksum}")
+            
+        self.logger.debug(f"Found valid {checksum_type.value} checksum: {checksum}")
+        return checksum

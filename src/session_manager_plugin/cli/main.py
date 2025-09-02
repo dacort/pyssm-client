@@ -19,6 +19,7 @@ from ..constants import CLIENT_VERSION
 from ..session.session_handler import SessionHandler
 from ..session.types import ClientConfig, SessionConfig, SessionType
 from ..utils.logging import get_logger, setup_logging
+from ..exec import run_command_sync
 from .types import ConnectArguments, SSHArguments, FileCopyArguments
 
 
@@ -981,6 +982,43 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
 
     except Exception as e:
         click.echo(f"Fatal error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command(name="exec")
+@click.option("--target", required=True, help="Target EC2 instance or managed instance ID")
+@click.option("--command", required=True, help="Command to execute on the target")
+@click.option("--profile", help="AWS profile")
+@click.option("--region", help="AWS region")
+@click.option("--endpoint-url", help="AWS endpoint URL")
+@click.option("--timeout", default=600, show_default=True, type=int)
+def exec_command(target: str, command: str, profile: str | None, region: str | None, endpoint_url: str | None, timeout: int) -> None:
+    """Execute a single command and return stdout/stderr/exit code."""
+    try:
+        result = run_command_sync(
+            target=target,
+            command=command,
+            profile=profile,
+            region=region,
+            endpoint_url=endpoint_url,
+            timeout=timeout,
+        )
+        # Print streams; exit with command exit code
+        if result.stdout:
+            try:
+                sys.stdout.buffer.write(result.stdout)
+                sys.stdout.buffer.flush()
+            except Exception:
+                click.echo(result.stdout.decode("utf-8", errors="replace"), nl=False)
+        if result.stderr:
+            try:
+                sys.stderr.buffer.write(result.stderr)
+                sys.stderr.buffer.flush()
+            except Exception:
+                click.echo(result.stderr.decode("utf-8", errors="replace"), nl=False, err=True)
+        sys.exit(result.exit_code)
+    except Exception as e:
+        click.echo(f"Execution failed: {e}", err=True)
         sys.exit(1)
 
 
