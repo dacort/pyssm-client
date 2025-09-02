@@ -29,7 +29,7 @@ uv run python -m session_manager_plugin.cli.main --help
 
 ## CLI Usage
 
-The CLI provides two subcommands: `connect` and `ssh`.
+The CLI provides three subcommands: `connect`, `ssh`, and `exec`.
 
 ### `ssh`: Start an SSM session to a target
 
@@ -62,6 +62,31 @@ Behavior:
 - Periodic terminal size updates (500ms) and on resize (SIGWINCH)
 - Ctrl-C (0x03), Ctrl-\ (0x1c), Ctrl-Z (0x1a) forwarded to remote
 - `exit` cleanly closes the session and the CLI
+
+
+### `exec`: Execute a single command
+
+Execute a single command on a target instance and return the results with proper exit codes.
+
+```
+uv run python -m session_manager_plugin.cli.main exec \
+  --target i-0123456789abcdef0 \
+  --command "ls -la /tmp" \
+  --region us-west-2 \
+  --profile myprofile
+```
+
+Options:
+- `--target` (required): EC2 instance ID (`i-*`) or managed instance ID (`mi-*`)
+- `--command` (required): Shell command to execute
+- `--timeout`: Command timeout in seconds (default: 600)
+- `--profile`, `--region`, `--endpoint-url`: AWS settings for `boto3`
+
+This command:
+- Executes the command and captures stdout/stderr separately
+- Returns the actual exit code of the executed command
+- Filters shell noise (prompts, command echoes) from output
+- Useful for scripting and automation
 
 
 ### `connect`: Attach to an existing SSM data channel
@@ -98,7 +123,34 @@ Notes:
 
 ## Using as a Library
 
-You can embed the plugin in your own Python program. There are two convenient levels: high-level (CLI coordinator) and low-level (session + data channel).
+You can embed the plugin in your own Python program. There are three convenient levels: exec API, high-level (CLI coordinator), and low-level (session + data channel).
+
+### Exec API: Single command execution
+
+For simple command execution with clean stdout/stderr separation:
+
+```python
+from session_manager_plugin.exec import run_command, run_command_sync
+
+# Async version
+result = await run_command(
+    target="i-0123456789abcdef0",
+    command="ls -la /tmp",
+    region="us-west-2",
+    profile="myprofile"
+)
+print(f"Exit code: {result.exit_code}")
+print(f"Stdout: {result.stdout.decode('utf-8')}")
+print(f"Stderr: {result.stderr.decode('utf-8')}")
+
+# Sync version  
+result = run_command_sync(
+    target="i-0123456789abcdef0",
+    command="sha256sum /path/to/file"
+)
+if result.exit_code == 0:
+    checksum = result.stdout.decode('utf-8').strip().split()[0]
+```
 
 ### High-level: reuse the CLI coordinator
 
