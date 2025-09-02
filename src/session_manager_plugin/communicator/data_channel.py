@@ -38,6 +38,9 @@ class SessionDataChannel(IDataChannel):
         self._input_handler: Callable[[bytes], None] | None = None
         self._output_handler: Callable[[bytes], None] | None = None
         self._closed_handler: Callable[[], None] | None = None
+        # NEW: separate stream handlers (optional)
+        self._stdout_handler: Callable[[bytes], None] | None = None
+        self._stderr_handler: Callable[[bytes], None] | None = None
 
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
@@ -205,6 +208,14 @@ class SessionDataChannel(IDataChannel):
         """Set handler called when the channel closes or errors."""
         self._closed_handler = handler
 
+    def set_stdout_handler(self, handler: Callable[[bytes], None]) -> None:
+        """Set handler for stdout data from remote."""
+        self._stdout_handler = handler
+
+    def set_stderr_handler(self, handler: Callable[[bytes], None]) -> None:
+        """Set handler for stderr data from remote."""
+        self._stderr_handler = handler
+
     def set_coalescing(self, enabled: bool, delay_sec: float | None = None) -> None:
         """Configure input coalescing behavior."""
         self._coalesce_enabled = enabled
@@ -342,6 +353,16 @@ class SessionDataChannel(IDataChannel):
                                 shell_data = client_message.get_shell_data()
                                 if shell_data and self._input_handler:
                                     self._input_handler(shell_data.encode("utf-8"))
+                                # NEW: route to per-stream handlers without removing existing behavior
+                                try:
+                                    if client_message.payload_type == PayloadType.OUTPUT:
+                                        if self._stdout_handler:
+                                            self._stdout_handler(shell_data.encode("utf-8"))
+                                    elif client_message.payload_type == PayloadType.STDERR:
+                                        if self._stderr_handler:
+                                            self._stderr_handler(shell_data.encode("utf-8"))
+                                except Exception:
+                                    pass
                                 message_processed = True
                             elif seq > self._expected_sequence_number:
                                 # Buffer for later; still ack
@@ -412,6 +433,16 @@ class SessionDataChannel(IDataChannel):
                     shell_data = cm.get_shell_data()
                     if shell_data and self._input_handler:
                         self._input_handler(shell_data.encode("utf-8"))
+                    # NEW: route to per-stream handlers for buffered messages too
+                    try:
+                        if cm.payload_type == PayloadType.OUTPUT:
+                            if self._stdout_handler:
+                                self._stdout_handler(shell_data.encode("utf-8"))
+                        elif cm.payload_type == PayloadType.STDERR:
+                            if self._stderr_handler:
+                                self._stderr_handler(shell_data.encode("utf-8"))
+                    except Exception:
+                        pass
                 self._expected_sequence_number += 1
                 self.logger.debug(
                     f"Drained buffered seq; expected now {self._expected_sequence_number}"
