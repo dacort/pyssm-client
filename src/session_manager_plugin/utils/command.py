@@ -145,11 +145,11 @@ async def run_command(
     session_done = asyncio.Event()
     exit_code = 0
     
-    def handle_output(data: bytes) -> None:
-        """Handle all output from shell (mixed stdout/stderr)."""
+    def handle_stdout(data: bytes) -> None:
+        """Handle stdout from shell."""
         nonlocal stdout_buf, exit_code
         
-        # Check for exit status marker in output
+        # Check for exit status marker in stdout
         try:
             text = data.decode("utf-8", errors="ignore")
             if "__SSM_EXIT__:" in text:
@@ -168,12 +168,18 @@ async def run_command(
             pass
             
         stdout_buf.extend(data)
+        
+    def handle_stderr(data: bytes) -> None:
+        """Handle stderr from shell."""
+        nonlocal stderr_buf
+        stderr_buf.extend(data)
     
     def handle_closed() -> None:
         loop.create_task(session_done.set())
     
-    # Configure data channel - only use input_handler to avoid double processing
-    data_channel.set_input_handler(handle_output)
+    # Configure data channel - use proper stream handlers for separated output
+    data_channel.set_stdout_handler(handle_stdout)
+    data_channel.set_stderr_handler(handle_stderr)
     data_channel.set_closed_handler(handle_closed)
     
     # Set client info and attach to session
@@ -216,7 +222,7 @@ async def run_command(
     
     return CommandResult(
         stdout=final_stdout,
-        stderr=b'',  # Using mixed output stream
+        stderr=bytes(stderr_buf),  # Now using proper stderr separation
         exit_code=exit_code
     )
 
