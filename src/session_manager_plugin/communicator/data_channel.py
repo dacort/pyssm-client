@@ -66,7 +66,7 @@ class SessionDataChannel(IDataChannel):
         self._flush_delay_sec: float = 0.01
         # Out-of-order output buffering
         self._incoming_buffer: Dict[int, bytes] = {}
-        
+
         # Message processing components
         self._message_parser = MessageParser()
         self._message_router = MessageRouter()
@@ -260,14 +260,16 @@ class SessionDataChannel(IDataChannel):
         except Exception as e:
             self.logger.error(f"Error handling message: {e}")
 
-    async def _process_parsed_message(self, parsed_message: Any, context: MessageHandlerContext) -> None:
+    async def _process_parsed_message(
+        self, parsed_message: Any, context: MessageHandlerContext
+    ) -> None:
         """Process a parsed message asynchronously."""
         try:
             processed, new_seq, input_change = await self._message_router.route_message(
                 parsed_message,
                 context,
                 self._expected_sequence_number,
-                self._serialize_input_message_with_payload_type
+                self._serialize_input_message_with_payload_type,
             )
 
             if not processed:
@@ -297,12 +299,18 @@ class SessionDataChannel(IDataChannel):
                     if new_seq is not None:
                         # In-order message processed
                         self._expected_sequence_number = new_seq
-                        self.logger.debug(f"Updated expected sequence to {self._expected_sequence_number}")
+                        self.logger.debug(
+                            f"Updated expected sequence to {self._expected_sequence_number}"
+                        )
                         self._drain_buffered_output()
-                    elif client_message.sequence_number > self._expected_sequence_number:
+                    elif (
+                        client_message.sequence_number > self._expected_sequence_number
+                    ):
                         # Out-of-order message; buffer it
                         if parsed_message.raw_data:
-                            self._incoming_buffer[client_message.sequence_number] = parsed_message.raw_data
+                            self._incoming_buffer[client_message.sequence_number] = (
+                                parsed_message.raw_data
+                            )
                         self.logger.debug(
                             f"Buffered future sequence {client_message.sequence_number}, expected {self._expected_sequence_number}"
                         )
@@ -319,7 +327,7 @@ class SessionDataChannel(IDataChannel):
         """Process buffered output messages in order starting from expected sequence."""
         try:
             from .protocol import parse_client_message
-            
+
             while self._expected_sequence_number in self._incoming_buffer:
                 raw = self._incoming_buffer.pop(self._expected_sequence_number)
                 cm = parse_client_message(raw)
@@ -416,7 +424,6 @@ class SessionDataChannel(IDataChannel):
         # Schedule the acknowledgment to be sent in the next event loop iteration
         loop.create_task(self._send_acknowledgment(original_message))
 
-
     async def _send_acknowledgment(self, original_message: Any) -> None:
         """Send acknowledgment message for received message."""
         try:
@@ -439,7 +446,6 @@ class SessionDataChannel(IDataChannel):
         except Exception as e:
             self.logger.error(f"Failed to send acknowledgment: {e}")
             # Don't raise - acknowledgment failure shouldn't stop message processing
-
 
     def _serialize_input_message_with_payload_type(
         self, input_data: bytes, payload_type: int

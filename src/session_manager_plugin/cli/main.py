@@ -376,13 +376,22 @@ def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
 
 
 @cli.command(name="exec")
-@click.option("--target", required=True, help="Target EC2 instance or managed instance ID")
+@click.option(
+    "--target", required=True, help="Target EC2 instance or managed instance ID"
+)
 @click.option("--command", required=True, help="Command to execute on the target")
 @click.option("--profile", help="AWS profile")
 @click.option("--region", help="AWS region")
 @click.option("--endpoint-url", help="AWS endpoint URL")
 @click.option("--timeout", default=600, show_default=True, type=int)
-def exec_command(target: str, command: str, profile: str | None, region: str | None, endpoint_url: str | None, timeout: int) -> None:
+def exec_command(
+    target: str,
+    command: str,
+    profile: str | None,
+    region: str | None,
+    endpoint_url: str | None,
+    timeout: int,
+) -> None:
     """Execute a single command and return stdout/stderr/exit code."""
     try:
         result = run_command_sync(
@@ -405,7 +414,9 @@ def exec_command(target: str, command: str, profile: str | None, region: str | N
                 sys.stderr.buffer.write(result.stderr)
                 sys.stderr.buffer.flush()
             except Exception:
-                click.echo(result.stderr.decode("utf-8", errors="replace"), nl=False, err=True)
+                click.echo(
+                    result.stderr.decode("utf-8", errors="replace"), nl=False, err=True
+                )
         sys.exit(result.exit_code)
     except Exception as e:
         click.echo(f"Execution failed: {e}", err=True)

@@ -17,7 +17,7 @@ from .types import (
 
 __all__ = [
     "Session",
-    "SessionHandler", 
+    "SessionHandler",
     "SessionValidationError",
     "SessionConfig",
     "ClientConfig",

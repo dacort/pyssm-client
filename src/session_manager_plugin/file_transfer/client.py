@@ -270,7 +270,7 @@ class FileTransferClient:
     async def _setup_data_channel(self, session_data: dict) -> Any:
         """Set up data channel for file transfer."""
         from ..communicator.data_channel import SessionDataChannel
-        
+
         websocket_config = create_websocket_config(
             stream_url=session_data["stream_url"], token=session_data["token_value"]
         )
@@ -300,7 +300,6 @@ class FileTransferClient:
         data_channel._command_complete = command_complete  # type: ignore
 
         return data_channel
-
 
     async def _upload_file_data(
         self,
@@ -491,28 +490,34 @@ class FileTransferClient:
         # Execute command using clean exec API
         result = await run_command(target=target, command=cmd, **aws_kwargs)
         self.logger.debug(f"Exec result: {result}")
-        
+
         if result.exit_code != 0:
             stderr_text = result.stderr.decode("utf-8", errors="ignore")
-            raise RuntimeError(f"Checksum command failed (exit {result.exit_code}): {stderr_text}")
-        
+            raise RuntimeError(
+                f"Checksum command failed (exit {result.exit_code}): {stderr_text}"
+            )
+
         # Parse checksum from clean stdout
         stdout_text = result.stdout.decode("utf-8", errors="ignore").strip()
-        
+
         if not stdout_text:
             raise RuntimeError("No output from checksum command")
-        
+
         # Extract checksum (first part before whitespace)
         parts = stdout_text.split()
         if not parts:
             raise RuntimeError(f"Could not parse checksum from output: {stdout_text}")
-            
+
         checksum = parts[0].lower()
-        
+
         # Validate checksum format
         expected_length = 32 if checksum_type == ChecksumType.MD5 else 64
-        if len(checksum) != expected_length or not all(c in '0123456789abcdef' for c in checksum):
-            raise RuntimeError(f"Invalid {checksum_type.value} checksum format: {checksum}")
-            
+        if len(checksum) != expected_length or not all(
+            c in "0123456789abcdef" for c in checksum
+        ):
+            raise RuntimeError(
+                f"Invalid {checksum_type.value} checksum format: {checksum}"
+            )
+
         self.logger.debug(f"Found valid {checksum_type.value} checksum: {checksum}")
         return checksum
