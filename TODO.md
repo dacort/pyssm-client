@@ -119,5 +119,6 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 ## Remaining Code Quality Tasks
 
 - [x] **Extract oversized CLI class (1033 lines)** - Extracted SessionManagerPlugin class (588 lines) from main.py to coordinator.py, reducing main CLI file from 956 to 424 lines. Clean separation of concerns: CLI commands in main.py, session coordination logic in coordinator.py.
+- [x] **Unused Code Cleanup** - Removed 7 unused imports (4 message constants from protocol.py, time/uuid from client.py, List from base.py), 1 unused exception variable, fixed 55+ formatting issues (trailing newlines, whitespace). All 63 linting issues resolved. Code is now clean and focused.
 - [ ] Improve error handling with specific exception types
 - [ ] Add pre-commit hooks for automated code quality

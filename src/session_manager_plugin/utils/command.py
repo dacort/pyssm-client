@@ -36,7 +36,7 @@ def _filter_shell_output(data: bytes, original_command: str) -> bytes:
                 not line == original_command and  # Exact command echo
                 not line.startswith('exit') and   # Exit command
                 not line.startswith('printf ') and  # Printf sentinel
-                not '__SSM_EXIT__' in line):      # Exit marker
+                '__SSM_EXIT__' not in line):      # Exit marker
                 filtered_lines.append(line)
         
         result = '\n'.join(filtered_lines)

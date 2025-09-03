@@ -8,7 +8,7 @@ from .types import ChecksumType, FileTransferDirection, FileTransferEncoding, Fi
 
 __all__ = [
     "FileTransferClient",
-    "FileTransferDirection", 
+    "FileTransferDirection",
     "FileTransferEncoding",
     "FileTransferOptions",
     "ChecksumType",

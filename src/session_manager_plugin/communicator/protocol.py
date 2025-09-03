@@ -14,12 +14,8 @@ from uuid import UUID
 
 from ..constants import (
     PayloadType,
-    MESSAGE_INPUT_STREAM,
     MESSAGE_OUTPUT_STREAM,
     MESSAGE_ACKNOWLEDGE,
-    MESSAGE_CHANNEL_CLOSED,
-    MESSAGE_START_PUBLICATION,
-    MESSAGE_PAUSE_PUBLICATION,
 )
 
 
@@ -214,7 +210,7 @@ def parse_client_message(data: bytes) -> ClientMessage | None:
             payload=payload,
         )
 
-    except (struct.error, IndexError, UnicodeDecodeError) as e:
+    except (struct.error, IndexError, UnicodeDecodeError):
         # Return None for parsing failures - let caller handle
         return None
 

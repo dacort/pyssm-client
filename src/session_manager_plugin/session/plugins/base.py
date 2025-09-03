@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List
-
 from ...utils.logging import get_logger
 from ..protocols import ISession, ISessionPlugin
 from ..session import Session
