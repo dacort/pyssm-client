@@ -29,7 +29,7 @@ uv run python -m session_manager_plugin.cli.main --help
 
 ## CLI Usage
 
-The CLI provides three subcommands: `connect`, `ssh`, and `exec`.
+The CLI provides four subcommands: `connect`, `ssh`, `exec`, and `copy`.
 
 ### `ssh`: Start an SSM session to a target
 
@@ -89,6 +89,37 @@ This command:
 - Useful for scripting and automation
 
 
+### `copy`: File transfer via SSM
+
+Transfer files to/from targets using base64 encoding over SSM sessions.
+
+```
+# Upload local file to remote
+uv run python -m session_manager_plugin.cli.main copy \
+  ./local-file.txt i-0123456789abcdef0:/tmp/remote-file.txt \
+  --region us-west-2 \
+  --profile myprofile
+
+# Download remote file to local  
+uv run python -m session_manager_plugin.cli.main copy \
+  i-0123456789abcdef0:/tmp/remote-file.txt ./local-file.txt \
+  --region us-west-2 \
+  --profile myprofile
+```
+
+Options:
+- `--verify-checksum` (default: on): Verify file integrity using MD5/SHA256
+- `--encoding` (default: base64): Transfer encoding (base64, raw, uuencode)
+- `--chunk-size`: Transfer chunk size in bytes (default: 8192)
+- `--profile`, `--region`, `--endpoint-url`: AWS settings for `boto3`
+
+Features:
+- Automatic checksum verification to ensure file integrity  
+- Progress reporting during transfer
+- Support for binary files via base64 encoding
+- Works with any file size (chunked transfer)
+
+
 ### `connect`: Attach to an existing SSM data channel
 
 Connects using session parameters you already have (typical when called by AWS CLI). You can pass a single JSON blob or individual flags.
@@ -123,7 +154,39 @@ Notes:
 
 ## Using as a Library
 
-You can embed the plugin in your own Python program. There are three convenient levels: exec API, high-level (CLI coordinator), and low-level (session + data channel).
+You can embed the plugin in your own Python program. There are four convenient levels: file transfer, exec API, high-level (CLI coordinator), and low-level (session + data channel).
+
+### File Transfer API: Upload/download files
+
+For programmatic file transfers with progress tracking and verification:
+
+```python
+from session_manager_plugin.file_transfer import FileTransferClient
+from session_manager_plugin.file_transfer.types import FileTransferOptions
+
+client = FileTransferClient()
+
+# Upload file
+options = FileTransferOptions(verify_checksum=True)
+success = await client.upload_file(
+    local_path="./local-file.txt",
+    remote_path="/tmp/remote-file.txt", 
+    target="i-0123456789abcdef0",
+    options=options,
+    region="us-west-2",
+    profile="myprofile"
+)
+
+# Download file
+success = await client.download_file(
+    remote_path="/tmp/remote-file.txt",
+    local_path="./downloaded-file.txt",
+    target="i-0123456789abcdef0", 
+    options=options,
+    region="us-west-2",
+    profile="myprofile"
+)
+```
 
 ### Exec API: Single command execution
 
@@ -232,6 +295,18 @@ uv run mypy .
 
 Logging:
 - By default, logs are minimal. Use `-v` or set up `setup_logging(level=logging.DEBUG)` programmatically for detailed traces.
+
+
+## Architecture
+
+The codebase has been recently refactored for better maintainability and reliability:
+
+- **Clean message handling**: AWS SSM protocol messages are parsed by dedicated `MessageParser` and routed to specialized handlers (`HandshakeHandler`, `StreamHandler`, `ControlHandler`)
+- **Reliable file transfers**: Fixed line ending normalization issues that caused checksum mismatches
+- **Modular design**: Session management, WebSocket communication, and CLI coordination are cleanly separated
+- **Type safety**: Full mypy type checking with modern Python type hints
+
+This provides a solid foundation for extending functionality while maintaining compatibility with the AWS SSM protocol.
 
 
 ## Known Limitations
