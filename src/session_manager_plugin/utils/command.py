@@ -195,7 +195,7 @@ async def run_command(
     # Send command + exit status query with unique marker
     await asyncio.sleep(0.1)  # Brief pause for shell setup
     wrapped = f"({command}); __EC=$?; echo '__SSM_EXIT__:'$__EC; exit $__EC"
-    await data_channel.send_input_data((wrapped + "\r").encode("utf-8"))
+    await data_channel.send_input_data((wrapped + "\n").encode("utf-8"))
     
     # Wait for completion or timeout
     try:

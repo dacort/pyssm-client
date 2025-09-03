@@ -350,7 +350,8 @@ class FileTransferClient:
 
         with open(local_file, "rb") as f:
             while chunk := f.read(options.chunk_size):
-                encoded_chunk = base64.b64encode(chunk) + b"\n"
+                # Send base64 encoded data without line endings to avoid normalization issues
+                encoded_chunk = base64.b64encode(chunk)
                 await data_channel.send_input_data(encoded_chunk)
 
                 bytes_sent += len(chunk)
