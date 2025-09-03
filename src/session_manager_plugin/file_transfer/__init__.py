@@ -1,26 +1,15 @@
 """File transfer module for binary file operations over AWS SSM."""
 
-from typing import TYPE_CHECKING
+# Only import types - they're safe and don't cause circular dependencies
+from .types import ChecksumType, FileTransferDirection, FileTransferEncoding, FileTransferOptions
 
-if TYPE_CHECKING:
-    from .client import FileTransferClient
-    from .types import FileTransferDirection, FileTransferEncoding, FileTransferOptions
+# Note: FileTransferClient NOT imported here to avoid circular dependency with exec module
+# Import it directly from .client when needed
 
 __all__ = [
     "FileTransferClient",
     "FileTransferDirection", 
     "FileTransferEncoding",
     "FileTransferOptions",
+    "ChecksumType",
 ]
-
-
-def __getattr__(name: str):
-    """Lazy import for file transfer components."""
-    if name == "FileTransferClient":
-        from .client import FileTransferClient
-        return FileTransferClient
-    elif name in ("FileTransferDirection", "FileTransferEncoding", "FileTransferOptions"):
-        from .types import FileTransferDirection, FileTransferEncoding, FileTransferOptions
-        return locals()[name]
-    else:
-        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
