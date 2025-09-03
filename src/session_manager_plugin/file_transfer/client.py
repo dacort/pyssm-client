@@ -2,8 +2,6 @@
 
 import asyncio
 import base64
-import time
-import uuid
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,8 +9,8 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from ..communicator.utils import create_websocket_config
-from ..utils.logging import get_logger
 from ..exec import run_command
+from ..utils.logging import get_logger
 from .types import ChecksumType, FileChecksum, FileTransferEncoding, FileTransferOptions
 
 
@@ -272,7 +270,7 @@ class FileTransferClient:
     async def _setup_data_channel(self, session_data: dict) -> Any:
         """Set up data channel for file transfer."""
         from ..communicator.data_channel import SessionDataChannel
-
+        
         websocket_config = create_websocket_config(
             stream_url=session_data["stream_url"], token=session_data["token_value"]
         )
@@ -342,8 +340,11 @@ class FileTransferClient:
         """Upload file using base64 encoding."""
         temp_remote = f"{remote_path}{options.temp_suffix}"
 
-        # Start base64 decode process on remote
-        decode_cmd = f"base64 -d > '{temp_remote}'\n"
+        # Start base64 decode process on remote using a here-doc to delimit input
+        # This avoids relying on Ctrl-D/EOF semantics which can vary by TTY mode
+        # and ensures the decoder receives the full payload before exiting.
+        heredoc_tag = "__SSM_EOF__"
+        decode_cmd = f"cat <<'{heredoc_tag}' | base64 -d > '{temp_remote}'\n"
         await data_channel.send_input_data(decode_cmd.encode())
 
         # Read and encode file in chunks
@@ -352,6 +353,8 @@ class FileTransferClient:
 
         with open(local_file, "rb") as f:
             while chunk := f.read(options.chunk_size):
+                # Send base64 encoded data; add newline to keep reasonable line lengths
+                # Newlines/CRs are ignored by base64 -d.
                 encoded_chunk = base64.b64encode(chunk) + b"\n"
                 await data_channel.send_input_data(encoded_chunk)
 
@@ -364,10 +367,10 @@ class FileTransferClient:
                 # Small delay to avoid overwhelming remote
                 await asyncio.sleep(0.001)
 
-        # End base64 input with EOF
-        await data_channel.send_input_data(b"\x04")  # Ctrl-D (EOF)
+        # Close the here-doc to signal end of data to the remote shell
+        await data_channel.send_input_data((heredoc_tag + "\n").encode())
 
-        # Wait a moment for base64 to complete, then move file
+        # Wait a moment for base64 to complete processing, then move file
         await asyncio.sleep(0.5)
 
         # Move temp file to final location

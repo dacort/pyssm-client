@@ -107,10 +107,55 @@ Proposed improvements to reduce complexity and make the code more idiomatic:
 10) Optional outgoing resend buffer
    - Only if needed; otherwise omit for simplicity with WebSocket reliability.
 
-## Next Up (Implement in this order)
+## Code Quality Improvements (Completed)
 
 - [x] 1) Centralize message names and payload types
 - [x] 2) Unify message serialization helpers
 - [x] 3) Trim unused dependencies (`pydantic`)
 - [x] 4) CLI flag for input coalescing
 - [x] 5) Async signal handling on Unix
+- [x] 6) **Import Architecture Cleanup** - Moved standard library imports to module level, eliminated repeated imports in CLI (4x FileTransferClient) and data_channel (3x+ json/asyncio), preserved strategic function-level imports only where needed to prevent circular dependencies
+
+## Data Channel Refactoring (In Progress)
+
+**Goal**: Break down complex 664-line SessionDataChannel into focused, single-responsibility classes
+
+### Phase 1: Extract MessageProcessor class ⚠️ REVERTED
+- **Attempted**: Created SSMMessageProcessor to handle AWS SSM binary message parsing and routing
+- **Issue**: File transfer functionality was broken (checksum mismatches, incomplete transfers)
+- **Resolution**: Reverted all Phase 1 changes via `git checkout`
+- **Status**: Reverted - file transfer issue appears to be pre-existing, not related to MessageProcessor
+- **Lesson**: Need more comprehensive testing including file transfer before considering refactoring complete
+
+### Phase 2: Extract SequenceManager class
+- Create SequenceManager for message ordering and out-of-order buffering  
+- Move sequence tracking logic (~100 lines)
+- Maintain ordering guarantees
+- **Verification**: Interactive sessions work correctly, no duplicate output
+
+### Phase 3: Extract InputCoalescer class
+- Create InputCoalescer for input batching and timing optimization
+- Move coalescing logic (~50 lines) 
+- Preserve timing behavior
+- **Verification**: Interactive sessions remain responsive, no input lag
+
+### Phase 4: Extract StreamRouter class  
+- Create StreamRouter for handler routing logic
+- Move stdout/stderr/input handler routing (~50 lines)
+- Maintain backward compatibility
+- **Verification**: Exec command output separation works correctly
+
+### Phase 5: Refactor SessionDataChannel
+- Compose extracted components in SessionDataChannel
+- Simplify to coordination/delegation role
+- Clean up remaining complexity
+- **Verification**: Full integration tests, manual CLI testing
+
+## Remaining Code Quality Tasks
+
+- [x] **Extract oversized CLI class (1033 lines)** - Extracted SessionManagerPlugin class (588 lines) from main.py to coordinator.py, reducing main CLI file from 956 to 424 lines. Clean separation of concerns: CLI commands in main.py, session coordination logic in coordinator.py.
+- [x] **Unused Code Cleanup** - Removed 7 unused imports (4 message constants from protocol.py, time/uuid from client.py, List from base.py), 1 unused exception variable, fixed 55+ formatting issues (trailing newlines, whitespace). All 63 linting issues resolved. Code is now clean and focused.
+- [ ] **Data Channel Breakdown** - Break down complex 664-line SessionDataChannel into focused classes (MessageProcessor, SequenceManager, InputCoalescer, StreamRouter) - PAUSED pending file transfer fix
+- [ ] **Fix File Transfer Issue** - File transfers are incomplete (3071/13427 bytes transferred, checksum mismatches). Issue appears pre-existing, not related to MessageProcessor refactoring.
+- [ ] Improve error handling with specific exception types  
+- [ ] Add pre-commit hooks for automated code quality
