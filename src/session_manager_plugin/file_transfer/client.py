@@ -340,8 +340,11 @@ class FileTransferClient:
         """Upload file using base64 encoding."""
         temp_remote = f"{remote_path}{options.temp_suffix}"
 
-        # Start base64 decode process on remote
-        decode_cmd = f"base64 -d > '{temp_remote}'\n"
+        # Start base64 decode process on remote using a here-doc to delimit input
+        # This avoids relying on Ctrl-D/EOF semantics which can vary by TTY mode
+        # and ensures the decoder receives the full payload before exiting.
+        heredoc_tag = "__SSM_EOF__"
+        decode_cmd = f"cat <<'{heredoc_tag}' | base64 -d > '{temp_remote}'\n"
         await data_channel.send_input_data(decode_cmd.encode())
 
         # Read and encode file in chunks
@@ -350,8 +353,9 @@ class FileTransferClient:
 
         with open(local_file, "rb") as f:
             while chunk := f.read(options.chunk_size):
-                # Send base64 encoded data without line endings to avoid normalization issues
-                encoded_chunk = base64.b64encode(chunk)
+                # Send base64 encoded data; add newline to keep reasonable line lengths
+                # Newlines/CRs are ignored by base64 -d.
+                encoded_chunk = base64.b64encode(chunk) + b"\n"
                 await data_channel.send_input_data(encoded_chunk)
 
                 bytes_sent += len(chunk)
@@ -363,10 +367,10 @@ class FileTransferClient:
                 # Small delay to avoid overwhelming remote
                 await asyncio.sleep(0.001)
 
-        # End base64 input with EOF
-        await data_channel.send_input_data(b"\x04")  # Ctrl-D (EOF)
+        # Close the here-doc to signal end of data to the remote shell
+        await data_channel.send_input_data((heredoc_tag + "\n").encode())
 
-        # Wait a moment for base64 to complete, then move file
+        # Wait a moment for base64 to complete processing, then move file
         await asyncio.sleep(0.5)
 
         # Move temp file to final location
