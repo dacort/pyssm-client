@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
+import pytest
 
 from pyssm_client.communicator.data_channel import SessionDataChannel
 from pyssm_client.communicator.types import (
@@ -29,7 +31,8 @@ def _build_output(seq: int, text: str) -> bytes:
     )
 
 
-def test_out_of_order_output_is_buffered_and_printed_in_order() -> None:
+@pytest.mark.asyncio
+async def test_out_of_order_output_is_buffered_and_printed_in_order() -> None:
     cfg = WebSocketConfig(url="wss://example", token="T")
     dc = SessionDataChannel(cfg)
 
@@ -41,9 +44,13 @@ def test_out_of_order_output_is_buffered_and_printed_in_order() -> None:
     b0 = _build_output(0, "first\n")
 
     dc._handle_message(WebSocketMessage(message_type=MessageType.BINARY, data=b1))  # type: ignore[attr-defined]
+    # Wait a bit for async processing
+    await asyncio.sleep(0.01)
     assert printed == []  # not printed yet; buffered
 
     dc._handle_message(WebSocketMessage(message_type=MessageType.BINARY, data=b0))  # type: ignore[attr-defined]
+    # Wait for async processing to complete
+    await asyncio.sleep(0.01)
 
     # Should have printed seq 0 then drained seq 1
     combined = b"".join(printed)

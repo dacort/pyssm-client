@@ -184,8 +184,10 @@ async def run_command(
     data_channel.set_closed_handler(handle_closed)
 
     # Set client info and attach to session
+    from ..constants import CLIENT_VERSION
+
     try:
-        data_channel.set_client_info("pyssm-client", "pyssm-client-0.1.0")
+        data_channel.set_client_info("pyssm-client", CLIENT_VERSION)
     except Exception:
         pass
     session_obj.set_data_channel(data_channel)

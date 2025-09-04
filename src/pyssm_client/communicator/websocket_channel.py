@@ -114,9 +114,11 @@ class WebSocketChannel:
         await self._set_connection_state(ConnectionState.CONNECTING)
 
         # Prepare connection headers
+        from ..constants import CLIENT_VERSION
+
         headers = {
             "Authorization": f"Bearer {self._config.token}",
-            "User-Agent": "python-session-manager-plugin/0.1.0",
+            "User-Agent": CLIENT_VERSION,
         }
 
         try:

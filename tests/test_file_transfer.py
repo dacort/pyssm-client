@@ -3,15 +3,15 @@
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 
-from src.session_manager_plugin.file_transfer.client import FileTransferClient
-from src.session_manager_plugin.file_transfer.types import (
+from pyssm_client.file_transfer.client import FileTransferClient
+from pyssm_client.file_transfer.types import (
     FileTransferOptions,
     FileTransferEncoding,
     ChecksumType,
     FileChecksum,
 )
-from src.session_manager_plugin.cli.types import FileCopyArguments
-from src.session_manager_plugin.cli.main import SessionManagerPlugin
+from pyssm_client.cli.types import FileCopyArguments
+from pyssm_client.cli.main import SessionManagerPlugin
 
 
 class TestFileTransferTypes:
@@ -166,7 +166,7 @@ class TestFileTransferClient:
 
         # Mock the import within the function
         with patch(
-            "src.session_manager_plugin.communicator.data_channel.SessionDataChannel"
+            "pyssm_client.communicator.data_channel.SessionDataChannel"
         ) as mock_channel_class:
             mock_channel = Mock()
             mock_channel.open = AsyncMock(return_value=True)
@@ -190,7 +190,7 @@ class TestSessionManagerPluginIntegration:
         plugin = SessionManagerPlugin()
 
         with patch(
-            "src.session_manager_plugin.file_transfer.client.FileTransferClient"
+            "pyssm_client.cli.coordinator.FileTransferClient"
         ) as mock_client_class:
             mock_client = Mock()
             mock_client.upload_file = AsyncMock(return_value=True)
@@ -211,7 +211,7 @@ class TestSessionManagerPluginIntegration:
         plugin = SessionManagerPlugin()
 
         with patch(
-            "src.session_manager_plugin.file_transfer.client.FileTransferClient"
+            "pyssm_client.cli.coordinator.FileTransferClient"
         ) as mock_client_class:
             mock_client = Mock()
             mock_client.download_file = AsyncMock(return_value=True)
@@ -232,7 +232,7 @@ class TestSessionManagerPluginIntegration:
         plugin = SessionManagerPlugin()
 
         with patch(
-            "src.session_manager_plugin.file_transfer.client.FileTransferClient"
+            "pyssm_client.cli.coordinator.FileTransferClient"
         ) as mock_client_class:
             mock_client = Mock()
             mock_client.verify_remote_file = AsyncMock(return_value="abc123def456")

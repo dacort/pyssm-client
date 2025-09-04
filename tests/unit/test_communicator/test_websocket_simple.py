@@ -65,7 +65,7 @@ class TestWebSocketChannelCore:
         channel = WebSocketChannel(sample_config)
 
         with patch(
-            "session_manager_plugin.communicator.websocket_channel.connect",
+            "pyssm_client.communicator.websocket_channel.connect",
             side_effect=Exception("Connection failed"),
         ):
             success = await channel.connect()

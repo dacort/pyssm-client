@@ -6,7 +6,7 @@ from enum import IntEnum
 
 
 # Public client version string used in handshakes and logging
-CLIENT_VERSION: str = "python-session-manager-plugin/0.1.0"
+CLIENT_VERSION: str = "pyssm-client/0.1.0"
 
 
 class PayloadType(IntEnum):
