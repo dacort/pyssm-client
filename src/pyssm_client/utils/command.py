@@ -185,9 +185,7 @@ async def run_command(
 
     # Set client info and attach to session
     try:
-        data_channel.set_client_info(
-            "pyssm-client", "pyssm-client-0.1.0"
-        )
+        data_channel.set_client_info("pyssm-client", "pyssm-client-0.1.0")
     except Exception:
         pass
     session_obj.set_data_channel(data_channel)

@@ -73,9 +73,7 @@ class SessionManagerPlugin:
             # Set up data channel for session BEFORE executing
             # Also supply client metadata for handshake
             try:
-                data_channel.set_client_info(
-                    "pyssm-client", CLIENT_VERSION
-                )
+                data_channel.set_client_info("pyssm-client", CLIENT_VERSION)
             except Exception:
                 pass
             self._current_session.set_data_channel(data_channel)

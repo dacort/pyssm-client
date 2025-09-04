@@ -473,7 +473,11 @@ class FileTransferClient:
             return False
 
     async def _get_remote_checksum(
-        self, target: str, remote_path: str, checksum_type: ChecksumType, **aws_kwargs: Any
+        self,
+        target: str,
+        remote_path: str,
+        checksum_type: ChecksumType,
+        **aws_kwargs: Any,
     ) -> str:
         """Get checksum of remote file using exec API."""
         # Build checksum command
