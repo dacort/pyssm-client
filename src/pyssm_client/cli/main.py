@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any
+from typing import Any, Dict
 
 import click
 import boto3
@@ -146,11 +146,11 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
         if ssh_args.region:
             session_kwargs["region_name"] = ssh_args.region
 
-        session = boto3.Session(**session_kwargs)
+        session = boto3.Session(**session_kwargs)  # type: ignore[arg-type]
         ssm = session.client("ssm", endpoint_url=ssh_args.endpoint_url)
 
         # Build start_session parameters
-        params = {"Target": ssh_args.target}
+        params: Dict[str, Any] = {"Target": ssh_args.target}
         if ssh_args.document_name:
             params["DocumentName"] = ssh_args.document_name
         if ssh_args.parameters:
@@ -225,7 +225,7 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 @click.option("--quiet", "-q", is_flag=True, help="Suppress progress output")
 @click.option("--no-progress", is_flag=True, help="Disable progress bar")
 @click.pass_context
-def copy(ctx: click.Context, source: str, destination: str, **kwargs) -> None:
+def copy(ctx: click.Context, source: str, destination: str, **kwargs: Any) -> None:
     """
     Copy files to/from remote hosts via AWS SSM using scp-like syntax.
 

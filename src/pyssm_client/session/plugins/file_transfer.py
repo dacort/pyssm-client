@@ -25,11 +25,11 @@ class FileTransferSession(Session):
 
     async def execute(self) -> None:
         """Execute file transfer session."""
-        self.logger.debug(f"Starting file transfer session: {self.config.session_id}")
+        self._logger.debug(f"Starting file transfer session: {self._config.session_id}")
 
         # File transfer sessions don't auto-execute like standard streams
         # Instead, they wait for explicit file transfer commands
-        self.logger.debug("File transfer session ready for operations")
+        self._logger.debug("File transfer session ready for operations")
 
 
 class FileTransferSessionPlugin(ISessionPlugin):

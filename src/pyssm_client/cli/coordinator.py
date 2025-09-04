@@ -32,7 +32,7 @@ class SessionManagerPlugin:
         self._session_handler = SessionHandler()
         self._current_session: Any | None = None
         self._shutdown_event = asyncio.Event()
-        self._orig_term_attrs: list[int] | None = None
+        self._orig_term_attrs: Any = None
         self._resize_task: asyncio.Task | None = None
         # Input coalescing configuration (managed via CLI)
         self._coalesce_mode: str = "auto"  # "auto" | "on" | "off"
@@ -74,7 +74,7 @@ class SessionManagerPlugin:
             # Also supply client metadata for handshake
             try:
                 data_channel.set_client_info(
-                    self._current_session.client_id, CLIENT_VERSION
+                    "pyssm-client", CLIENT_VERSION
                 )
             except Exception:
                 pass
@@ -221,7 +221,7 @@ class SessionManagerPlugin:
         """Set up signal handlers for graceful shutdown."""
         loop = asyncio.get_event_loop()
 
-        def sigint_handler(signum: int, frame: Any) -> None:
+        def sigint_handler(_signum: int, _frame: Any) -> None:
             # Forward Ctrl-C to remote instead of closing locally
             self.logger.debug("SIGINT: forwarding to remote as ETX")
             if (
@@ -235,15 +235,15 @@ class SessionManagerPlugin:
             else:
                 loop.create_task(self._initiate_shutdown())
 
-        def sigterm_handler(signum: int, frame: Any) -> None:
+        def sigterm_handler(_signum: int, _frame: Any) -> None:
             self.logger.debug("SIGTERM: initiating shutdown")
             loop.create_task(self._initiate_shutdown())
 
-        def sigwinch_handler(signum: int, frame: Any) -> None:
+        def sigwinch_handler(_signum: int, _frame: Any) -> None:
             # On terminal resize, send updated size
             loop.create_task(self._send_terminal_size_update())
 
-        def sigquit_handler(signum: int, frame: Any) -> None:
+        def sigquit_handler(_signum: int, _frame: Any) -> None:
             # Forward Ctrl-\ (FS) 0x1c
             self.logger.debug("SIGQUIT: forwarding to remote as FS (0x1c)")
             if (
@@ -255,7 +255,7 @@ class SessionManagerPlugin:
                     self._current_session.data_channel.send_input_data(b"\x1c")
                 )
 
-        def sigtstp_handler(signum: int, frame: Any) -> None:
+        def sigtstp_handler(_signum: int, _frame: Any) -> None:
             # Forward Ctrl-Z (SUB) 0x1a
             self.logger.debug("SIGTSTP: forwarding to remote as SUB (0x1a)")
             if (
@@ -451,7 +451,7 @@ class SessionManagerPlugin:
         if self._resize_task is not None and not self._resize_task.done():
             return
 
-        async def _loop():
+        async def _loop() -> None:
             try:
                 while not self._shutdown_event.is_set():
                     try:

@@ -249,7 +249,7 @@ class FileTransferClient:
         if region:
             session_kwargs["region_name"] = region
 
-        session = boto3.Session(**session_kwargs)
+        session = boto3.Session(**session_kwargs)  # type: ignore[arg-type]
         ssm = session.client("ssm", endpoint_url=endpoint_url)
 
         # Start session for Standard_Stream (shell access)
@@ -473,7 +473,7 @@ class FileTransferClient:
             return False
 
     async def _get_remote_checksum(
-        self, target: str, remote_path: str, checksum_type: ChecksumType, **aws_kwargs
+        self, target: str, remote_path: str, checksum_type: ChecksumType, **aws_kwargs: Any
     ) -> str:
         """Get checksum of remote file using exec API."""
         # Build checksum command

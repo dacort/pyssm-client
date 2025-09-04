@@ -28,7 +28,7 @@ jobs:
   test-pypi:
     runs-on: ubuntu-latest
     needs: build
-    environment: test-pypi
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-')  # Only for pre-releases
     
     steps:
     - name: Download build artifacts
@@ -47,8 +47,8 @@ jobs:
 
   pypi:
     runs-on: ubuntu-latest
-    needs: [build, test-pypi]
-    environment: pypi
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')  # Only for stable releases
     
     steps:
     - name: Download build artifacts
@@ -67,7 +67,8 @@ jobs:
 
   github-release:
     runs-on: ubuntu-latest
-    needs: pypi
+    needs: [build]
+    if: always() && (needs.test-pypi.result == 'success' || needs.pypi.result == 'success' || (needs.test-pypi.result == 'skipped' && needs.pypi.result == 'skipped'))
     permissions:
       contents: write
     

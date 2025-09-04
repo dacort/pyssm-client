@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Iterator, Optional
 
 import boto3
 
@@ -58,7 +58,7 @@ class CommandResult:
     stderr: bytes
     exit_code: int
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         yield self.stdout
         yield self.stderr
         yield self.exit_code
@@ -97,7 +97,7 @@ async def run_command(
     if region:
         session_kwargs["region_name"] = region
 
-    session = boto3.Session(**session_kwargs)
+    session = boto3.Session(**session_kwargs)  # type: ignore[arg-type]
     ssm = session.client("ssm", endpoint_url=endpoint_url)
 
     # Start session
@@ -143,7 +143,6 @@ async def run_command(
 
     stdout_buf = bytearray()
     stderr_buf = bytearray()
-    loop = asyncio.get_running_loop()
     session_done = asyncio.Event()
     exit_code = 0
 
@@ -177,7 +176,7 @@ async def run_command(
         stderr_buf.extend(data)
 
     def handle_closed() -> None:
-        loop.create_task(session_done.set())
+        session_done.set()
 
     # Configure data channel - use proper stream handlers for separated output
     data_channel.set_stdout_handler(handle_stdout)
@@ -187,7 +186,7 @@ async def run_command(
     # Set client info and attach to session
     try:
         data_channel.set_client_info(
-            session_obj.client_id, "python-session-manager-plugin-1.0.0"
+            "pyssm-client", "pyssm-client-0.1.0"
         )
     except Exception:
         pass

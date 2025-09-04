@@ -183,7 +183,7 @@ class FileCopyArguments:
 
     @classmethod
     def from_scp_style(
-        cls, source: str, destination: str, **kwargs
+        cls, source: str, destination: str, **kwargs: Any
     ) -> "FileCopyArguments":
         """Create FileCopyArguments from scp-style source and destination.
 
