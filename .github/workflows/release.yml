@@ -27,6 +27,7 @@ jobs:
 
   test-pypi:
     runs-on: ubuntu-latest
+    environment: testpypi
     permissions:
       id-token: write
     needs: build
@@ -49,6 +50,7 @@ jobs:
 
   pypi:
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
     needs: build
