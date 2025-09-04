@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime
 
-from session_manager_plugin.session.types import (
+from pyssm_client.session.types import (
     SessionConfig,
     ClientConfig,
     SessionType,

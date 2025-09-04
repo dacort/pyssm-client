@@ -48,7 +48,16 @@ dmypy.json
 
 # IDE and editor files
 .vscode/
+.code/
 .idea/
 *.swp
 *.swo
 *~
+
+# uv
+.uv_cache/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

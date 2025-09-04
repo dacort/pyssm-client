@@ -3,7 +3,7 @@
 import pytest
 import time
 
-from session_manager_plugin.communicator.types import (
+from pyssm_client.communicator.types import (
     ConnectionState,
     MessageType,
     WebSocketConfig,

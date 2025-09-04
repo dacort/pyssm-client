@@ -13,9 +13,9 @@ from typing import Any, List
 
 import pytest
 
-from session_manager_plugin.communicator.data_channel import SessionDataChannel
-from session_manager_plugin.communicator.types import WebSocketConfig
-from session_manager_plugin.communicator.protocol import (
+from pyssm_client.communicator.data_channel import SessionDataChannel
+from pyssm_client.communicator.types import WebSocketConfig
+from pyssm_client.communicator.protocol import (
     parse_client_message,
     PayloadType,
 )

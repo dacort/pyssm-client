@@ -5,16 +5,16 @@ import hashlib
 import time
 import uuid
 
-from session_manager_plugin.communicator.protocol import (
+from pyssm_client.communicator.protocol import (
     parse_client_message,
     serialize_client_message,
 )
-from session_manager_plugin.constants import (
+from pyssm_client.constants import (
     MESSAGE_OUTPUT_STREAM,
     MESSAGE_ACKNOWLEDGE,
     PayloadType,
 )
-from session_manager_plugin.communicator.protocol import create_acknowledge_message
+from pyssm_client.communicator.protocol import create_acknowledge_message
 
 
 def _build_output_message(seq: int, payload: bytes) -> bytes:

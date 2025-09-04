@@ -4,9 +4,9 @@
 import asyncio
 from pathlib import Path
 
-from session_manager_plugin.cli.main import SessionManagerPlugin
-from session_manager_plugin.file_transfer.client import FileTransferClient
-from session_manager_plugin.file_transfer.types import FileTransferOptions
+from pyssm_client.cli.main import SessionManagerPlugin
+from pyssm_client.file_transfer.client import FileTransferClient
+from pyssm_client.file_transfer.types import FileTransferOptions
 
 
 async def example_programmatic_api():
@@ -90,28 +90,28 @@ def cli_examples():
     print("=====================================")
     print()
     print("# Upload a file (local to remote)")
-    print("session-manager-plugin copy ./file.txt i-1234567890abcdef0:/tmp/file.txt")
+    print("pyssm copy ./file.txt i-1234567890abcdef0:/tmp/file.txt")
     print()
     print("# Download a file (remote to local)")
-    print("session-manager-plugin copy i-1234567890abcdef0:/var/log/app.log ./app.log")
+    print("pyssm copy i-1234567890abcdef0:/var/log/app.log ./app.log")
     print()
     print("# Upload to remote home directory")
-    print("session-manager-plugin copy ./document.pdf i-1234567890abcdef0:~/document.pdf")
+    print("pyssm copy ./document.pdf i-1234567890abcdef0:~/document.pdf")
     print()
     print("# Download with different local name")
-    print("session-manager-plugin copy i-1234567890abcdef0:/etc/hosts ./remote_hosts")
+    print("pyssm copy i-1234567890abcdef0:/etc/hosts ./remote_hosts")
     print()
     print("# Upload with custom encoding and chunk size")
-    print("session-manager-plugin copy ./large_file.zip i-1234567890abcdef0:/tmp/large_file.zip --encoding base64 --chunk-size 131072")
+    print("pyssm copy ./large_file.zip i-1234567890abcdef0:/tmp/large_file.zip --encoding base64 --chunk-size 131072")
     print()
     print("# Skip checksum verification for faster transfer")
-    print("session-manager-plugin copy ./file.txt i-1234567890abcdef0:/tmp/file.txt --no-verify")
+    print("pyssm copy ./file.txt i-1234567890abcdef0:/tmp/file.txt --no-verify")
     print()
     print("# Quiet mode (no progress output)")
-    print("session-manager-plugin copy ./file.txt i-1234567890abcdef0:/tmp/file.txt --quiet")
+    print("pyssm copy ./file.txt i-1234567890abcdef0:/tmp/file.txt --quiet")
     print()
     print("# Use different AWS profile and region")
-    print("session-manager-plugin copy ./config.json i-1234567890abcdef0:/tmp/config.json --profile production --region us-west-2")
+    print("pyssm copy ./config.json i-1234567890abcdef0:/tmp/config.json --profile production --region us-west-2")
 
 
 if __name__ == "__main__":

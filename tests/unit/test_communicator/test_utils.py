@@ -2,7 +2,7 @@
 
 import pytest
 
-from session_manager_plugin.communicator.utils import (
+from pyssm_client.communicator.utils import (
     build_stream_url,
     create_websocket_config,
     validate_websocket_url,

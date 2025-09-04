@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, Mock
 
-from session_manager_plugin.session import (
+from pyssm_client.session import (
     Session,
     SessionConfig,
     ClientConfig,
