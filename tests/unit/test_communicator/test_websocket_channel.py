@@ -30,17 +30,19 @@ class TestWebSocketChannel:
         mock_ws.send = AsyncMock()
         mock_ws.recv = AsyncMock()
         mock_ws.ping = AsyncMock()
-        
+
         # Mock the protocol attribute for new asyncio interface
         mock_protocol = MagicMock()
         mock_ws.protocol = mock_protocol
-        
+
         return mock_ws
 
     def mock_websocket_connect(self, mock_websocket):
         """Helper to create proper async mock for session_manager_plugin.communicator.websocket_channel.connect."""
+
         async def mock_connect(*args, **kwargs):
             return mock_websocket
+
         return mock_connect
 
     def test_channel_initialization(self, sample_config):
@@ -56,10 +58,15 @@ class TestWebSocketChannel:
         channel = WebSocketChannel(sample_config)
 
         # Mock background tasks to prevent hanging
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+        ):
             success = await channel.connect()
-            
+
             # Give a moment for connection state to be set
             await asyncio.sleep(0.01)
 
@@ -71,7 +78,10 @@ class TestWebSocketChannel:
         """Test WebSocket connection failure."""
         channel = WebSocketChannel(sample_config)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=Exception("Connection failed")):
+        with patch(
+            "session_manager_plugin.communicator.websocket_channel.connect",
+            side_effect=Exception("Connection failed"),
+        ):
             success = await channel.connect()
 
             assert success is False
@@ -86,7 +96,10 @@ class TestWebSocketChannel:
             await asyncio.sleep(10)  # Longer than connect_timeout
             return AsyncMock()
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=slow_connect):
+        with patch(
+            "session_manager_plugin.communicator.websocket_channel.connect",
+            side_effect=slow_connect,
+        ):
             success = await channel.connect()
 
             assert success is False
@@ -95,8 +108,13 @@ class TestWebSocketChannel:
         """Test sending string message."""
         channel = WebSocketChannel(sample_config)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+        ):
             await channel.connect()
             await channel.send_message("test message")
 
@@ -107,8 +125,13 @@ class TestWebSocketChannel:
         channel = WebSocketChannel(sample_config)
         data = b"binary data"
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+        ):
             await channel.connect()
             await channel.send_message(data)
 
@@ -119,8 +142,13 @@ class TestWebSocketChannel:
         channel = WebSocketChannel(sample_config)
         data = {"key": "value", "number": 123}
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+        ):
             await channel.connect()
             await channel.send_message(data)
 
@@ -138,8 +166,13 @@ class TestWebSocketChannel:
         """Test sending message with invalid type."""
         channel = WebSocketChannel(sample_config)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+        ):
             await channel.connect()
 
             with pytest.raises(ValueError, match="Unsupported message type"):
@@ -149,9 +182,14 @@ class TestWebSocketChannel:
         """Test closing WebSocket connection."""
         channel = WebSocketChannel(sample_config)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock), \
-             patch.object(channel, '_stop_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+            patch.object(channel, "_stop_background_tasks", new_callable=AsyncMock),
+        ):
             await channel.connect()
             await channel.close()
 
@@ -171,7 +209,10 @@ class TestWebSocketChannel:
         # Mock receiving a message
         mock_websocket.recv.side_effect = ["test message", asyncio.CancelledError()]
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", return_value=mock_websocket):
+        with patch(
+            "session_manager_plugin.communicator.websocket_channel.connect",
+            return_value=mock_websocket,
+        ):
             await channel.connect()
             # Give some time for the message listener to process
             await asyncio.sleep(0.01)
@@ -190,7 +231,10 @@ class TestWebSocketChannel:
 
         channel.set_error_handler(error_handler)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=Exception("Test error")):
+        with patch(
+            "session_manager_plugin.communicator.websocket_channel.connect",
+            side_effect=Exception("Test error"),
+        ):
             await channel.connect()
 
         # Error handler should have been called during connection failure
@@ -206,9 +250,14 @@ class TestWebSocketChannel:
 
         channel.set_connection_handler(connection_handler)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=self.mock_websocket_connect(mock_websocket)), \
-             patch.object(channel, '_start_background_tasks', new_callable=AsyncMock), \
-             patch.object(channel, '_stop_background_tasks', new_callable=AsyncMock):
+        with (
+            patch(
+                "session_manager_plugin.communicator.websocket_channel.connect",
+                side_effect=self.mock_websocket_connect(mock_websocket),
+            ),
+            patch.object(channel, "_start_background_tasks", new_callable=AsyncMock),
+            patch.object(channel, "_stop_background_tasks", new_callable=AsyncMock),
+        ):
             await channel.connect()
             await channel.close()
 

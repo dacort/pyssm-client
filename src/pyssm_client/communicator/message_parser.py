@@ -11,7 +11,6 @@ from .protocol import parse_client_message, ClientMessage
 from .types import WebSocketMessage, MessageType
 from ..constants import (
     PayloadType,
-    MESSAGE_OUTPUT_STREAM,
     MESSAGE_ACKNOWLEDGE,
     MESSAGE_CHANNEL_CLOSED,
     MESSAGE_START_PUBLICATION,

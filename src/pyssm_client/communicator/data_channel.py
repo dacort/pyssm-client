@@ -26,7 +26,7 @@ from ..constants import (
     MESSAGE_START_PUBLICATION,
     MESSAGE_PAUSE_PUBLICATION,
 )
-from .types import ConnectionState, MessageType, WebSocketConfig, WebSocketMessage
+from .types import ConnectionState, WebSocketConfig, WebSocketMessage
 from .websocket_channel import WebSocketChannel
 
 

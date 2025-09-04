@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import uuid
 from typing import Any, Callable, Dict, Optional
 
 from ..utils.logging import get_logger
 from .message_parser import ParsedMessage, ParsedMessageType
-from .protocol import ClientMessage
 from ..constants import (
     PayloadType,
     CLIENT_VERSION,
-    MESSAGE_INPUT_STREAM,
 )
 
 

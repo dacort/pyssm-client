@@ -4,7 +4,11 @@ import time
 import uuid
 
 from pyssm_client.communicator.data_channel import SessionDataChannel
-from pyssm_client.communicator.types import WebSocketConfig, WebSocketMessage, MessageType
+from pyssm_client.communicator.types import (
+    WebSocketConfig,
+    WebSocketMessage,
+    MessageType,
+)
 from pyssm_client.communicator.protocol import serialize_client_message
 from pyssm_client.constants import MESSAGE_OUTPUT_STREAM, PayloadType
 
@@ -45,4 +49,3 @@ def test_out_of_order_output_is_buffered_and_printed_in_order() -> None:
     combined = b"".join(printed)
     assert combined.startswith(b"first\n")
     assert b"second" in combined
-

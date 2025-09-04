@@ -52,9 +52,12 @@ def test_ack_message_format_and_digest() -> None:
 
     # Payload should be JSON with acknowledged info
     payload_obj = json.loads(ack.payload.decode("utf-8"))
-    assert payload_obj["AcknowledgedMessageType"].strip() == original.message_type.strip()
     assert (
-        payload_obj["AcknowledgedMessageId"].strip() == original.get_message_id_string().strip()
+        payload_obj["AcknowledgedMessageType"].strip() == original.message_type.strip()
+    )
+    assert (
+        payload_obj["AcknowledgedMessageId"].strip()
+        == original.get_message_id_string().strip()
     )
     assert payload_obj["AcknowledgedMessageSequenceNumber"] == original.sequence_number
     assert payload_obj.get("IsSequentialMessage") is True
@@ -62,4 +65,3 @@ def test_ack_message_format_and_digest() -> None:
     # Digest check: sha256(payload) must equal payload_digest
     digest = hashlib.sha256(ack.payload).digest()
     assert digest == ack.payload_digest
-

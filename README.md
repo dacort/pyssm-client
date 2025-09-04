@@ -1,6 +1,6 @@
-# Python Session Manager Plugin
+# PySSM Client
 
-A Python implementation of the AWS Session Manager Plugin. It speaks the same binary protocol as the official Go plugin and supports interactive shell sessions over SSM.
+Enhanced Python AWS SSM Session Manager client with interactive sessions, exec, and file transfer support. It speaks the same binary protocol as the official Go plugin and provides additional functionality like library imports and extended CLI commands.
 
 Highlights:
 - Interactive SSH-like sessions via SSM (`ssh` subcommand)
@@ -9,21 +9,36 @@ Highlights:
 - Minimal logging by default; verbose traces with `-v`
 
 
+## Installation
+
+Install from PyPI:
+
+```bash
+pip install pyssm-client
+```
+
+Or with uv:
+
+```bash
+uv add pyssm-client
+```
+
 ## Requirements
 
 - Python 3.12+
 - AWS credentials discoverable via environment or `~/.aws/credentials`
 
-Install (editable):
+## Quick Start
 
-```
-uv pip install -e .
-```
+```bash
+# Interactive SSH-like session
+pyssm ssh --target i-0123456789abcdef0
 
-Run with `uv`:
+# Execute single command
+pyssm exec --target i-0123456789abcdef0 --command "ls -la"
 
-```
-uv run python -m session_manager_plugin.cli.main --help
+# Copy files
+pyssm copy ./local-file.txt i-0123456789abcdef0:/tmp/remote-file.txt
 ```
 
 
@@ -35,8 +50,8 @@ The CLI provides four subcommands: `connect`, `ssh`, `exec`, and `copy`.
 
 Starts a new SSM session using `boto3` and connects interactively.
 
-```
-uv run python -m session_manager_plugin.cli.main ssh \
+```bash
+pyssm ssh \
   --target i-0123456789abcdef0 \
   --region us-west-2 \
   --profile myprofile
@@ -68,8 +83,8 @@ Behavior:
 
 Execute a single command on a target instance and return the results with proper exit codes.
 
-```
-uv run python -m session_manager_plugin.cli.main exec \
+```bash
+pyssm exec \
   --target i-0123456789abcdef0 \
   --command "ls -la /tmp" \
   --region us-west-2 \
@@ -93,15 +108,15 @@ This command:
 
 Transfer files to/from targets using base64 encoding over SSM sessions.
 
-```
+```bash
 # Upload local file to remote
-uv run python -m session_manager_plugin.cli.main copy \
+pyssm copy \
   ./local-file.txt i-0123456789abcdef0:/tmp/remote-file.txt \
   --region us-west-2 \
   --profile myprofile
 
 # Download remote file to local  
-uv run python -m session_manager_plugin.cli.main copy \
+pyssm copy \
   i-0123456789abcdef0:/tmp/remote-file.txt ./local-file.txt \
   --region us-west-2 \
   --profile myprofile
@@ -126,8 +141,8 @@ Connects using session parameters you already have (typical when called by AWS C
 
 JSON form (mimics the AWS CLI invocation):
 
-```
-uv run python -m session_manager_plugin.cli.main connect '{
+```bash
+pyssm connect '{
   "SessionId": "dacort-abc123",
   "StreamUrl": "wss://ssmmessages.us-west-2.amazonaws.com/v1/data-channel/dacort-abc123?...",
   "TokenValue": "...",
@@ -138,8 +153,8 @@ uv run python -m session_manager_plugin.cli.main connect '{
 
 Flag form:
 
-```
-uv run python -m session_manager_plugin.cli.main connect \
+```bash
+pyssm connect \
   --session-id dacort-abc123 \
   --stream-url wss://... \
   --token-value ... \
@@ -161,8 +176,8 @@ You can embed the plugin in your own Python program. There are four convenient l
 For programmatic file transfers with progress tracking and verification:
 
 ```python
-from session_manager_plugin.file_transfer import FileTransferClient
-from session_manager_plugin.file_transfer.types import FileTransferOptions
+from pyssm_client.file_transfer import FileTransferClient
+from pyssm_client.file_transfer.types import FileTransferOptions
 
 client = FileTransferClient()
 
@@ -193,7 +208,7 @@ success = await client.download_file(
 For simple command execution with clean stdout/stderr separation:
 
 ```python
-from session_manager_plugin.exec import run_command, run_command_sync
+from pyssm_client.exec import run_command, run_command_sync
 
 # Async version
 result = await run_command(
@@ -219,9 +234,9 @@ if result.exit_code == 0:
 
 ```
 import asyncio
-from session_manager_plugin.cli.types import ConnectArguments
-from session_manager_plugin.cli.main import SessionManagerPlugin
-from session_manager_plugin.utils.logging import setup_logging
+from pyssm_client.cli.types import ConnectArguments
+from pyssm_client.cli.main import SessionManagerPlugin
+from pyssm_client.utils.logging import setup_logging
 
 setup_logging()  # or logging.DEBUG for verbose
 
@@ -241,9 +256,9 @@ exit_code = asyncio.run(plugin.run_session(args))
 
 ```
 import asyncio
-from session_manager_plugin.session.session_handler import SessionHandler
-from session_manager_plugin.communicator.utils import create_websocket_config
-from session_manager_plugin.communicator.data_channel import SessionDataChannel
+from pyssm_client.session.session_handler import SessionHandler
+from pyssm_client.communicator.utils import create_websocket_config
+from pyssm_client.communicator.data_channel import SessionDataChannel
 
 async def main():
     handler = SessionHandler()

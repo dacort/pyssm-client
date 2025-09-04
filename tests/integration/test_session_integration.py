@@ -2,7 +2,7 @@
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from pyssm_client.cli.main import SessionManagerPlugin
 from pyssm_client.cli.types import ConnectArguments
@@ -72,9 +72,7 @@ class TestSessionIntegration:
     async def test_argument_validation(self):
         """Test CLI argument validation."""
         # Invalid args - missing required fields
-        invalid_args = ConnectArguments(
-            session_id="", stream_url="", token_value=""
-        )
+        invalid_args = ConnectArguments(session_id="", stream_url="", token_value="")
 
         errors = invalid_args.validate()
         assert len(errors) >= 3  # Should have multiple validation errors

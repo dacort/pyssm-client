@@ -1,7 +1,7 @@
 """Tests for core Session class."""
 
 import pytest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 from pyssm_client.session import (
     Session,

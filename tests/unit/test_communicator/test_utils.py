@@ -1,7 +1,5 @@
 """Tests for WebSocket utilities."""
 
-import pytest
-
 from pyssm_client.communicator.utils import (
     build_stream_url,
     create_websocket_config,

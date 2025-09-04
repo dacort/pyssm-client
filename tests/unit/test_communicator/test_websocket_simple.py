@@ -1,7 +1,7 @@
 """Simplified tests for WebSocket channel focusing on core functionality."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from pyssm_client.communicator.types import ConnectionState, WebSocketConfig
 from pyssm_client.communicator.websocket_channel import WebSocketChannel
@@ -64,7 +64,10 @@ class TestWebSocketChannelCore:
         """Test connection failure is handled gracefully."""
         channel = WebSocketChannel(sample_config)
 
-        with patch("session_manager_plugin.communicator.websocket_channel.connect", side_effect=Exception("Connection failed")):
+        with patch(
+            "session_manager_plugin.communicator.websocket_channel.connect",
+            side_effect=Exception("Connection failed"),
+        ):
             success = await channel.connect()
 
             assert success is False
