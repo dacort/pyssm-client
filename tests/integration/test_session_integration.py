@@ -4,9 +4,9 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from session_manager_plugin.cli.main import SessionManagerPlugin
-from session_manager_plugin.cli.types import ConnectArguments
-from session_manager_plugin.session.types import ClientConfig, SessionConfig, SessionType
+from pyssm_client.cli.main import SessionManagerPlugin
+from pyssm_client.cli.types import ConnectArguments
+from pyssm_client.session.types import ClientConfig, SessionConfig, SessionType
 
 
 class TestSessionIntegration:

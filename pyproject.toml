@@ -1,9 +1,9 @@
 [project]
-name = "python-session-manager-plugin"
+name = "pyssm-client"
 version = "0.1.0"
-description = "Python implementation of AWS Session Manager Plugin"
+description = "Enhanced Python AWS SSM Session Manager client with interactive sessions, exec, and file transfer support"
 authors = [
-    {name = "Damon Cortesi", email = "dacort@amazon.com"},
+    {name = "Damon Cortesi", email = "d.lifehacker@gmail.com"},
 ]
 dependencies = [
     "websockets>=15.0.1",
@@ -13,16 +13,31 @@ dependencies = [
 requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "Apache-2.0"}
+homepage = "https://github.com/dacort/pyssm-client"
+repository = "https://github.com/dacort/pyssm-client"
+keywords = ["aws", "ssm", "session-manager", "ssh", "ec2"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators", 
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 
 [project.scripts]
-session-manager-plugin = "session_manager_plugin.cli.main:main"
+pyssm = "pyssm_client.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/session_manager_plugin"]
+packages = ["src/pyssm_client"]
 
 [tool.uv]
 dev-dependencies = [

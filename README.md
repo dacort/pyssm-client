@@ -11,8 +11,8 @@ Highlights:
 
 ## Requirements
 
-- Python 3.13+
-- AWS credentials (for `ssh`) discoverable via environment or `~/.aws/credentials`
+- Python 3.12+
+- AWS credentials discoverable via environment or `~/.aws/credentials`
 
 Install (editable):
 

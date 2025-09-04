@@ -4,8 +4,8 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from session_manager_plugin.communicator.types import ConnectionState, WebSocketConfig
-from session_manager_plugin.communicator.websocket_channel import WebSocketChannel
+from pyssm_client.communicator.types import ConnectionState, WebSocketConfig
+from pyssm_client.communicator.websocket_channel import WebSocketChannel
 
 
 class TestWebSocketChannel:

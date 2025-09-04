@@ -3,10 +3,10 @@ from __future__ import annotations
 import time
 import uuid
 
-from session_manager_plugin.communicator.data_channel import SessionDataChannel
-from session_manager_plugin.communicator.types import WebSocketConfig, WebSocketMessage, MessageType
-from session_manager_plugin.communicator.protocol import serialize_client_message
-from session_manager_plugin.constants import MESSAGE_OUTPUT_STREAM, PayloadType
+from pyssm_client.communicator.data_channel import SessionDataChannel
+from pyssm_client.communicator.types import WebSocketConfig, WebSocketMessage, MessageType
+from pyssm_client.communicator.protocol import serialize_client_message
+from pyssm_client.constants import MESSAGE_OUTPUT_STREAM, PayloadType
 
 
 def _build_output(seq: int, text: str) -> bytes:
