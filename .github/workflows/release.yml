@@ -27,6 +27,8 @@ jobs:
 
   test-pypi:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-')  # Only for pre-releases
     
@@ -47,6 +49,8 @@ jobs:
 
   pypi:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')  # Only for stable releases
     
