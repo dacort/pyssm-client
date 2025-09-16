@@ -207,9 +207,9 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
 @click.option(
     "--chunk-size",
     type=int,
-    default=65536,
+    default=32768,
     show_default=True,
-    help="Transfer chunk size in bytes",
+    help="Transfer chunk size in bytes (32KB, safe for base64 encoding + protocol overhead)",
 )
 @click.option("--no-verify", is_flag=True, help="Skip checksum verification")
 @click.option(

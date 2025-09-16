@@ -31,7 +31,7 @@ class TestFileTransferTypes:
         """Test FileTransferOptions validation."""
         # Valid options
         options = FileTransferOptions()
-        assert options.chunk_size == 65536
+        assert options.chunk_size == 49152
         assert options.encoding == FileTransferEncoding.BASE64
 
         # Invalid chunk size

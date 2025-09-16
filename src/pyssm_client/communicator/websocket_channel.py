@@ -126,7 +126,7 @@ class WebSocketChannel:
                 connect(
                     self._config.url,
                     additional_headers=headers,
-                    max_size=self._config.max_message_size,
+                    max_size=self._config.max_frame_size,  # Use frame size limit, not message size
                     ping_interval=None,  # We handle pings manually
                     ping_timeout=None,
                 ),

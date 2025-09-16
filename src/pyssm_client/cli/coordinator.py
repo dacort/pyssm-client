@@ -487,7 +487,7 @@ class SessionManagerPlugin:
         target: str,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         verify_checksum: bool = True,
-        chunk_size: int = 65536,
+        chunk_size: int = 32768,
         # AWS parameters
         profile: Optional[str] = None,
         region: Optional[str] = None,
@@ -533,7 +533,7 @@ class SessionManagerPlugin:
         target: str,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         verify_checksum: bool = True,
-        chunk_size: int = 65536,
+        chunk_size: int = 32768,
         # AWS parameters
         profile: Optional[str] = None,
         region: Optional[str] = None,
