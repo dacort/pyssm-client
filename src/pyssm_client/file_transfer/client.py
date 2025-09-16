@@ -523,6 +523,10 @@ class FileTransferClient:
         bytes_sent = 0
         file_size = local_file.stat().st_size
 
+        self.logger.info(
+            "Starting upload of %s (%s bytes)", local_file, file_size
+        )
+
         with open(local_file, "rb") as f:
             while chunk := f.read(options.chunk_size):
                 # Encode chunk to base64
@@ -541,54 +545,34 @@ class FileTransferClient:
                 # Small delay to avoid overwhelming remote
                 await asyncio.sleep(0.005)
 
-        # Ask the remote shell to report the final size before proceeding.
-        self.logger.debug(
-            "Waiting for remote file %s to reach %s bytes", temp_remote, file_size
+        if options.progress_callback:
+            try:
+                import sys
+
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            except Exception:
+                pass
+
+        self.logger.info("All chunks sent; waiting for remote flush...")
+        remote_size = await self._wait_for_remote_size(
+            temp_remote,
+            expected_size=file_size,
+            target=target,
+            profile=profile,
+            region=region,
+            endpoint_url=endpoint_url,
         )
-        from ..utils.command import run_command
-
-        remote_size = 0
-        attempts = 0
-        max_attempts = 40  # roughly 20 seconds with 0.5s sleep
-
-        while attempts < max_attempts:
-            attempts += 1
-            size_result = await run_command(
-                target=target,
-                command=f"wc -c < '{temp_remote}'",
-                profile=profile,
-                region=region,
-                endpoint_url=endpoint_url,
-                timeout=15,
-            )
-
-            if size_result.exit_code == 0:
-                try:
-                    remote_size = int(size_result.stdout.decode().strip() or "0")
-                except ValueError:
-                    remote_size = 0
-            else:
-                self.logger.debug(
-                    "Remote wc command exited %s: %s",
-                    size_result.exit_code,
-                    size_result.stderr.decode(errors="ignore"),
-                )
-                remote_size = 0
-
-            if remote_size >= file_size:
-                break
-
-            await asyncio.sleep(0.5)
 
         if remote_size < file_size:
             self.logger.warning(
-                "Remote file %s size %s < expected %s after wait",
+                "Remote file %s reported %s bytes (< %s) before verification",
                 temp_remote,
                 remote_size,
                 file_size,
             )
 
-        self.logger.debug(f"Upload completed: {bytes_sent} bytes sent to {temp_remote}")
+        self.logger.debug("Upload completed: %s bytes sent to %s", bytes_sent, temp_remote)
         return True
 
 
@@ -623,6 +607,61 @@ class FileTransferClient:
     ) -> bool:
         """Upload file using uuencoding."""
         raise NotImplementedError("Uuencode upload not yet implemented")
+
+    async def _wait_for_remote_size(
+        self,
+        remote_path: str,
+        expected_size: int,
+        *,
+        target: str,
+        profile: Optional[str],
+        region: Optional[str],
+        endpoint_url: Optional[str],
+        max_attempts: int = 40,
+        delay: float = 0.5,
+    ) -> int:
+        """Poll the remote host until the file reaches the expected size."""
+        if expected_size == 0:
+            return 0
+
+        last_size = 0
+        attempts = 0
+
+        while attempts < max_attempts:
+            attempts += 1
+            result = await run_command(
+                target=target,
+                command=f"wc -c < '{remote_path}'",
+                profile=profile,
+                region=region,
+                endpoint_url=endpoint_url,
+                timeout=15,
+            )
+
+            if result.exit_code == 0:
+                try:
+                    last_size = int(result.stdout.decode().strip() or "0")
+                except ValueError:
+                    last_size = 0
+            else:
+                self.logger.debug(
+                    "Remote wc command on %s exited %s: %s",
+                    remote_path,
+                    result.exit_code,
+                    result.stderr.decode(errors="ignore"),
+                )
+                last_size = 0
+
+            self.logger.debug(
+                "Remote file %s currently %s/%s bytes", remote_path, last_size, expected_size
+            )
+
+            if last_size >= expected_size:
+                return last_size
+
+            await asyncio.sleep(delay)
+
+        return last_size
 
     async def _download_file_data(
         self,
