@@ -55,15 +55,9 @@ class FileTransferClient:
 
         options = options or FileTransferOptions()
 
+        upload_success = False
+
         try:
-            # Create AWS SSM session
-            session_data = await self._create_ssm_session(
-                target=target, profile=profile, region=region, endpoint_url=endpoint_url
-            )
-
-            # Set up data channel
-            data_channel = await self._setup_data_channel(session_data)
-
             # Compute local checksum if verification enabled
             local_checksum = None
             if options.verify_checksum:
@@ -72,16 +66,91 @@ class FileTransferClient:
                     f"Local {options.checksum_type.value}: {local_checksum.value}"
                 )
 
-            # Perform upload
-            success = await self._upload_file_data(
-                data_channel=data_channel,
-                local_file=local_file,
-                remote_path=remote_path,
-                options=options,
+            # Create AWS SSM session for upload
+            session_data = await self._create_ssm_session(
+                target=target, profile=profile, region=region, endpoint_url=endpoint_url
             )
+            ssm_client = session_data.get("ssm_client")
 
-            if success and options.verify_checksum and local_checksum:
-                # Verify remote checksum
+            # Set up data channel
+            data_channel, session_obj = await self._setup_data_channel(session_data)
+
+            try:
+                # Perform upload (data only, no verification/move)
+                upload_success = await self._upload_file_data(
+                    data_channel=data_channel,
+                    local_file=local_file,
+                    remote_path=remote_path,
+                    options=options,
+                )
+            finally:
+                # Add delay to allow AWS to fully process upload completion before termination
+                await asyncio.sleep(0.2)
+                # Terminate main session immediately after upload
+                try:
+                    await session_obj.terminate_session()
+                except Exception:
+                    pass
+                try:
+                    await data_channel.close()
+                except Exception:
+                    pass
+                if ssm_client:
+                    try:
+                        ssm_client.terminate_session(
+                            SessionId=session_data["session_id"]
+                        )
+                    except Exception:
+                        pass
+
+            if not upload_success:
+                return False
+
+            # Post-upload operations using separate sessions
+            temp_remote = f"{remote_path}{options.temp_suffix}"
+            
+            # Verify upload size using run_command (separate session)
+            from ..utils.command import run_command
+            verify_result = await run_command(
+                target=target,
+                command=f"wc -c < '{temp_remote}'",
+                profile=profile,
+                region=region,
+                endpoint_url=endpoint_url,
+                timeout=30
+            )
+            
+            if verify_result.exit_code == 0:
+                try:
+                    actual_size = int(verify_result.stdout.decode().strip())
+                    file_size = local_file.stat().st_size
+                    if actual_size != file_size:
+                        self.logger.error(f"Size mismatch: expected {file_size}, got {actual_size}")
+                        return False
+                    self.logger.debug(f"Upload verified: {actual_size} bytes")
+                except (ValueError, AttributeError) as e:
+                    self.logger.error(f"Failed to parse final size: {e}")
+                    return False
+            else:
+                self.logger.warning("Upload verification failed")
+                return False
+
+            # Move temp file to final location using run_command (separate session)
+            move_result = await run_command(
+                target=target,
+                command=f"mv '{temp_remote}' '{remote_path}'",
+                profile=profile,
+                region=region,
+                endpoint_url=endpoint_url,
+                timeout=30
+            )
+            
+            if move_result.exit_code != 0:
+                self.logger.error(f"Failed to move temp file: {move_result.stderr.decode()}")
+                return False
+
+            # Verify checksum if requested (separate session)
+            if options.verify_checksum and local_checksum:
                 remote_checksum = await self._get_remote_checksum(
                     target=target,
                     remote_path=remote_path,
@@ -99,8 +168,7 @@ class FileTransferClient:
 
                 self.logger.debug("Checksum verification passed")
 
-            await data_channel.close()
-            return success
+            return True
 
         except Exception as e:
             self.logger.error(f"Upload failed: {e}")
@@ -141,47 +209,65 @@ class FileTransferClient:
             session_data = await self._create_ssm_session(
                 target=target, profile=profile, region=region, endpoint_url=endpoint_url
             )
+            ssm_client = session_data.get("ssm_client")
 
             # Set up data channel
-            data_channel = await self._setup_data_channel(session_data)
+            data_channel, session_obj = await self._setup_data_channel(session_data)
 
-            # Get remote checksum if verification enabled
-            remote_checksum = None
-            if options.verify_checksum:
-                remote_checksum = await self._get_remote_checksum(
-                    target=target,
-                    remote_path=remote_path,
-                    checksum_type=options.checksum_type,
-                    profile=profile,
-                    region=region,
-                    endpoint_url=endpoint_url,
-                )
-                self.logger.debug(
-                    f"Remote {options.checksum_type.value}: {remote_checksum}"
-                )
-
-            # Perform download
-            success = await self._download_file_data(
-                data_channel=data_channel,
-                remote_path=remote_path,
-                local_file=local_file,
-                options=options,
-            )
-
-            if success and options.verify_checksum and remote_checksum:
-                # Verify local checksum
-                local_checksum = FileChecksum.compute(local_file, options.checksum_type)
-
-                if local_checksum.value != remote_checksum:
-                    self.logger.error(
-                        f"Checksum mismatch: remote={remote_checksum}, local={local_checksum.value}"
+            try:
+                # Get remote checksum if verification enabled
+                remote_checksum = None
+                if options.verify_checksum:
+                    remote_checksum = await self._get_remote_checksum(
+                        target=target,
+                        remote_path=remote_path,
+                        checksum_type=options.checksum_type,
+                        profile=profile,
+                        region=region,
+                        endpoint_url=endpoint_url,
                     )
-                    return False
+                    self.logger.debug(
+                        f"Remote {options.checksum_type.value}: {remote_checksum}"
+                    )
 
-                self.logger.debug("Checksum verification passed")
+                # Perform download
+                success = await self._download_file_data(
+                    data_channel=data_channel,
+                    remote_path=remote_path,
+                    local_file=local_file,
+                    options=options,
+                )
 
-            await data_channel.close()
-            return success
+                if success and options.verify_checksum and remote_checksum:
+                    # Verify local checksum
+                    local_checksum = FileChecksum.compute(local_file, options.checksum_type)
+
+                    if local_checksum.value != remote_checksum:
+                        self.logger.error(
+                            f"Checksum mismatch: remote={remote_checksum}, local={local_checksum.value}"
+                        )
+                        return False
+
+                    self.logger.debug("Checksum verification passed")
+
+                return success
+            finally:
+                # Ensure proper cleanup in all cases
+                try:
+                    await session_obj.terminate_session()
+                except Exception:
+                    pass
+                try:
+                    await data_channel.close()
+                except Exception:
+                    pass
+                if ssm_client:
+                    try:
+                        ssm_client.terminate_session(
+                            SessionId=session_data["session_id"]
+                        )
+                    except Exception:
+                        pass
 
         except Exception as e:
             self.logger.error(f"Download failed: {e}")
@@ -216,20 +302,38 @@ class FileTransferClient:
             session_data = await self._create_ssm_session(
                 target=target, profile=profile, region=region, endpoint_url=endpoint_url
             )
+            ssm_client = session_data.get("ssm_client")
 
-            data_channel = await self._setup_data_channel(session_data)
+            data_channel, session_obj = await self._setup_data_channel(session_data)
 
-            checksum = await self._get_remote_checksum(
-                target=target,
-                remote_path=remote_path,
-                checksum_type=checksum_type,
-                profile=profile,
-                region=region,
-                endpoint_url=endpoint_url,
-            )
+            try:
+                checksum = await self._get_remote_checksum(
+                    target=target,
+                    remote_path=remote_path,
+                    checksum_type=checksum_type,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
+                )
 
-            await data_channel.close()
-            return checksum
+                return checksum
+            finally:
+                # Ensure proper cleanup in all cases
+                try:
+                    await session_obj.terminate_session()
+                except Exception:
+                    pass
+                try:
+                    await data_channel.close()
+                except Exception:
+                    pass
+                if ssm_client:
+                    try:
+                        ssm_client.terminate_session(
+                            SessionId=session_data["session_id"]
+                        )
+                    except Exception:
+                        pass
 
         except Exception as e:
             self.logger.error(f"Remote checksum failed: {e}")
@@ -262,15 +366,45 @@ class FileTransferClient:
                 "token_value": response["TokenValue"],
                 "stream_url": response["StreamUrl"],
                 "target": target,
+                "ssm_client": ssm,
             }
         except (BotoCoreError, ClientError) as e:
             self.logger.error(f"Failed to create SSM session: {e}")
             raise
 
-    async def _setup_data_channel(self, session_data: dict) -> Any:
+    async def _setup_data_channel(self, session_data: dict) -> tuple[Any, Any]:
         """Set up data channel for file transfer."""
         from ..communicator.data_channel import SessionDataChannel
+        from ..cli.types import ConnectArguments
+        from ..session.registry import get_session_registry
+        from ..session.plugins import StandardStreamPlugin
+        from ..session.session_handler import SessionHandler
 
+        # Create session object first
+        args = ConnectArguments(
+            session_id=session_data["session_id"],
+            stream_url=session_data["stream_url"],
+            token_value=session_data["token_value"],
+            target=session_data["target"],
+            session_type="Standard_Stream",
+        )
+
+        registry = get_session_registry()
+        if not registry.is_session_type_supported("Standard_Stream"):
+            registry.register_plugin("Standard_Stream", StandardStreamPlugin())
+        handler = SessionHandler()
+
+        session_obj = await handler.validate_input_and_create_session(
+            {
+                "sessionId": args.session_id,
+                "streamUrl": args.stream_url,
+                "tokenValue": args.token_value,
+                "target": args.target,
+                "sessionType": args.session_type,
+            }
+        )
+
+        # Create data channel
         websocket_config = create_websocket_config(
             stream_url=session_data["stream_url"], token=session_data["token_value"]
         )
@@ -290,16 +424,22 @@ class FileTransferClient:
         data_channel.set_input_handler(handle_output)
         data_channel.set_closed_handler(handle_closed)
 
-        # Open connection
-        success = await data_channel.open()
-        if not success:
-            raise RuntimeError("Failed to establish data channel")
+        # Set client info and attach to session
+        from ..constants import CLIENT_VERSION
+        try:
+            data_channel.set_client_info("pyssm-client", CLIENT_VERSION)
+        except Exception:
+            pass
+        session_obj.set_data_channel(data_channel)
+
+        # Execute session
+        await session_obj.execute()
 
         # Store handlers for command execution
         data_channel._received_data = received_data  # type: ignore
         data_channel._command_complete = command_complete  # type: ignore
 
-        return data_channel
+        return data_channel, session_obj
 
     async def _upload_file_data(
         self,
@@ -336,27 +476,27 @@ class FileTransferClient:
         remote_path: str,
         options: FileTransferOptions,
     ) -> bool:
-        """Upload file using base64 encoding."""
+        """Upload file using base64 encoding via data channel (upload only, no verification/move)."""
         temp_remote = f"{remote_path}{options.temp_suffix}"
+        
+        # Clear any existing temp file
+        clear_cmd = f"rm -f '{temp_remote}'\n"
+        await data_channel.send_input_data(clear_cmd.encode())
+        await asyncio.sleep(0.1)
 
-        # Start base64 decode process on remote using a here-doc to delimit input
-        # This avoids relying on Ctrl-D/EOF semantics which can vary by TTY mode
-        # and ensures the decoder receives the full payload before exiting.
-        heredoc_tag = "__SSM_EOF__"
-        decode_cmd = f"cat <<'{heredoc_tag}' | base64 -d > '{temp_remote}'\n"
-        await data_channel.send_input_data(decode_cmd.encode())
-
-        # Read and encode file in chunks
+        # Read and upload file in chunks using data channel
         bytes_sent = 0
         file_size = local_file.stat().st_size
 
         with open(local_file, "rb") as f:
             while chunk := f.read(options.chunk_size):
-                # Send base64 encoded data; add newline to keep reasonable line lengths
-                # Newlines/CRs are ignored by base64 -d.
-                encoded_chunk = base64.b64encode(chunk) + b"\n"
-                await data_channel.send_input_data(encoded_chunk)
-
+                # Encode chunk to base64
+                encoded_chunk = base64.b64encode(chunk).decode('ascii')
+                
+                # Send chunk using simple append (no heredoc complexity)
+                append_cmd = f"echo -n '{encoded_chunk}' | base64 -d >> '{temp_remote}'\n"
+                await data_channel.send_input_data(append_cmd.encode())
+                
                 bytes_sent += len(chunk)
 
                 # Progress callback
@@ -364,20 +504,11 @@ class FileTransferClient:
                     options.progress_callback(bytes_sent, file_size)
 
                 # Small delay to avoid overwhelming remote
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0.005)
 
-        # Close the here-doc to signal end of data to the remote shell
-        await data_channel.send_input_data((heredoc_tag + "\n").encode())
-
-        # Wait a moment for base64 to complete processing, then move file
-        await asyncio.sleep(0.5)
-
-        # Move temp file to final location
-        move_cmd = f"mv '{temp_remote}' '{remote_path}'"
-        await data_channel.send_input_data(f"{move_cmd}\n".encode())
-        await asyncio.sleep(0.2)  # Wait for move to complete
-
+        self.logger.debug(f"Upload completed: {bytes_sent} bytes sent to {temp_remote}")
         return True
+
 
     async def _upload_raw(
         self,
