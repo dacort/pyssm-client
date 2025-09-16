@@ -82,6 +82,10 @@ class FileTransferClient:
                     local_file=local_file,
                     remote_path=remote_path,
                     options=options,
+                    target=target,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
                 )
             finally:
                 # Add delay to allow AWS to fully process upload completion before termination
@@ -447,20 +451,46 @@ class FileTransferClient:
         local_file: Path,
         remote_path: str,
         options: FileTransferOptions,
+        *,
+        target: str,
+        profile: Optional[str],
+        region: Optional[str],
+        endpoint_url: Optional[str],
     ) -> bool:
         """Upload file data through data channel."""
         try:
             if options.encoding == FileTransferEncoding.BASE64:
                 return await self._upload_base64(
-                    data_channel, local_file, remote_path, options
+                    data_channel,
+                    local_file,
+                    remote_path,
+                    options,
+                    target=target,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
                 )
             elif options.encoding == FileTransferEncoding.RAW:
                 return await self._upload_raw(
-                    data_channel, local_file, remote_path, options
+                    data_channel,
+                    local_file,
+                    remote_path,
+                    options,
+                    target=target,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
                 )
             elif options.encoding == FileTransferEncoding.UUENCODE:
                 return await self._upload_uuencode(
-                    data_channel, local_file, remote_path, options
+                    data_channel,
+                    local_file,
+                    remote_path,
+                    options,
+                    target=target,
+                    profile=profile,
+                    region=region,
+                    endpoint_url=endpoint_url,
                 )
             else:
                 raise ValueError(f"Unsupported encoding: {options.encoding}")
@@ -475,6 +505,11 @@ class FileTransferClient:
         local_file: Path,
         remote_path: str,
         options: FileTransferOptions,
+        *,
+        target: str,
+        profile: Optional[str],
+        region: Optional[str],
+        endpoint_url: Optional[str],
     ) -> bool:
         """Upload file using base64 encoding via data channel (upload only, no verification/move)."""
         temp_remote = f"{remote_path}{options.temp_suffix}"
@@ -506,6 +541,53 @@ class FileTransferClient:
                 # Small delay to avoid overwhelming remote
                 await asyncio.sleep(0.005)
 
+        # Ask the remote shell to report the final size before proceeding.
+        self.logger.debug(
+            "Waiting for remote file %s to reach %s bytes", temp_remote, file_size
+        )
+        from ..utils.command import run_command
+
+        remote_size = 0
+        attempts = 0
+        max_attempts = 40  # roughly 20 seconds with 0.5s sleep
+
+        while attempts < max_attempts:
+            attempts += 1
+            size_result = await run_command(
+                target=target,
+                command=f"wc -c < '{temp_remote}'",
+                profile=profile,
+                region=region,
+                endpoint_url=endpoint_url,
+                timeout=15,
+            )
+
+            if size_result.exit_code == 0:
+                try:
+                    remote_size = int(size_result.stdout.decode().strip() or "0")
+                except ValueError:
+                    remote_size = 0
+            else:
+                self.logger.debug(
+                    "Remote wc command exited %s: %s",
+                    size_result.exit_code,
+                    size_result.stderr.decode(errors="ignore"),
+                )
+                remote_size = 0
+
+            if remote_size >= file_size:
+                break
+
+            await asyncio.sleep(0.5)
+
+        if remote_size < file_size:
+            self.logger.warning(
+                "Remote file %s size %s < expected %s after wait",
+                temp_remote,
+                remote_size,
+                file_size,
+            )
+
         self.logger.debug(f"Upload completed: {bytes_sent} bytes sent to {temp_remote}")
         return True
 
@@ -516,6 +598,11 @@ class FileTransferClient:
         local_file: Path,
         remote_path: str,
         options: FileTransferOptions,
+        *,
+        target: str,
+        profile: Optional[str],
+        region: Optional[str],
+        endpoint_url: Optional[str],
     ) -> bool:
         """Upload file using raw binary (not implemented - requires special handling)."""
         raise NotImplementedError(
@@ -528,6 +615,11 @@ class FileTransferClient:
         local_file: Path,
         remote_path: str,
         options: FileTransferOptions,
+        *,
+        target: str,
+        profile: Optional[str],
+        region: Optional[str],
+        endpoint_url: Optional[str],
     ) -> bool:
         """Upload file using uuencoding."""
         raise NotImplementedError("Uuencode upload not yet implemented")
