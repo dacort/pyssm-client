@@ -52,6 +52,7 @@ class WebSocketConfig:
     ping_timeout: float = 10.0  # seconds
     connect_timeout: float = 30.0  # seconds
     max_message_size: int = 1024 * 1024  # 1MB
+    max_frame_size: int = 128 * 1024  # 128KB frame size limit (generous for base64)
     max_queue_size: int = 100
     retry_attempts: int = 3
     retry_delay: float = 1.0  # seconds

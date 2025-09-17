@@ -192,42 +192,54 @@ async def run_command(
         pass
     session_obj.set_data_channel(data_channel)
 
-    # Execute session
-    await session_obj.execute()
+    session_id = ss["SessionId"]
 
-    # Send command + exit status query with unique marker
-    await asyncio.sleep(0.1)  # Brief pause for shell setup
-    wrapped = f"({command}); __EC=$?; echo '__SSM_EXIT__:'$__EC; exit $__EC"
-    await data_channel.send_input_data((wrapped + "\n").encode("utf-8"))
-
-    # Wait for completion or timeout
     try:
-        await asyncio.wait_for(session_done.wait(), timeout=timeout)
-    except asyncio.TimeoutError:
-        exit_code = 124  # Command timeout
+        # Execute session
+        await session_obj.execute()
 
-    # Clean up
-    try:
-        await session_obj.terminate_session()
-    except Exception:
-        pass
+        # Send command + exit status query with unique marker
+        await asyncio.sleep(0.1)  # Brief pause for shell setup
+        wrapped = f"({command}); __EC=$?; echo '__SSM_EXIT__:'$__EC; exit $__EC"
+        await data_channel.send_input_data((wrapped + "\n").encode("utf-8"))
 
-    # Filter shell noise from stdout and remove exit marker
-    stdout_text = stdout_buf.decode("utf-8", errors="ignore")
+        # Wait for completion or timeout
+        try:
+            await asyncio.wait_for(session_done.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            exit_code = 124  # Command timeout
 
-    if "__SSM_EXIT__:" in stdout_text:
-        lines = stdout_text.split("\n")
-        filtered_lines = [line for line in lines if "__SSM_EXIT__:" not in line]
-        clean_stdout = "\n".join(filtered_lines)
-        final_stdout = _filter_shell_output(clean_stdout.encode("utf-8"), command)
-    else:
-        final_stdout = _filter_shell_output(bytes(stdout_buf), command)
+        # Add delay to allow AWS to fully process command completion before termination
+        await asyncio.sleep(0.2)
 
-    return CommandResult(
-        stdout=final_stdout,
-        stderr=bytes(stderr_buf),  # Now using proper stderr separation
-        exit_code=exit_code,
-    )
+        # Filter shell noise from stdout and remove exit marker
+        stdout_text = stdout_buf.decode("utf-8", errors="ignore")
+
+        if "__SSM_EXIT__:" in stdout_text:
+            lines = stdout_text.split("\n")
+            filtered_lines = [line for line in lines if "__SSM_EXIT__:" not in line]
+            clean_stdout = "\n".join(filtered_lines)
+            final_stdout = _filter_shell_output(clean_stdout.encode("utf-8"), command)
+        else:
+            final_stdout = _filter_shell_output(bytes(stdout_buf), command)
+
+        return CommandResult(
+            stdout=final_stdout,
+            stderr=bytes(stderr_buf),  # Now using proper stderr separation
+            exit_code=exit_code,
+        )
+
+    finally:
+        # Ensure both client-side and AWS-side sessions are terminated
+        try:
+            await session_obj.terminate_session()
+        except Exception:
+            pass
+
+        try:
+            ssm.terminate_session(SessionId=session_id)
+        except Exception:
+            pass
 
 
 def run_command_sync(
