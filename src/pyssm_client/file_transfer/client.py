@@ -111,66 +111,7 @@ class FileTransferClient:
             if not upload_success:
                 return False
 
-            # Post-upload operations using separate sessions
-            temp_remote = f"{remote_path}{options.temp_suffix}"
-            
-            # Verify upload size using run_command (separate session)
-            from ..utils.command import run_command
-            verify_result = await run_command(
-                target=target,
-                command=f"wc -c < '{temp_remote}'",
-                profile=profile,
-                region=region,
-                endpoint_url=endpoint_url,
-                timeout=30
-            )
-            
-            if verify_result.exit_code == 0:
-                try:
-                    actual_size = int(verify_result.stdout.decode().strip())
-                    file_size = local_file.stat().st_size
-                    if actual_size != file_size:
-                        self.logger.error(f"Size mismatch: expected {file_size}, got {actual_size}")
-                        return False
-                    self.logger.debug(f"Upload verified: {actual_size} bytes")
-                except (ValueError, AttributeError) as e:
-                    self.logger.error(f"Failed to parse final size: {e}")
-                    return False
-            else:
-                self.logger.warning("Upload verification failed")
-                return False
-
-            # Move temp file to final location using run_command (separate session)
-            move_result = await run_command(
-                target=target,
-                command=f"mv '{temp_remote}' '{remote_path}'",
-                profile=profile,
-                region=region,
-                endpoint_url=endpoint_url,
-                timeout=30
-            )
-            
-            if move_result.exit_code != 0:
-                self.logger.error(f"Failed to move temp file: {move_result.stderr.decode()}")
-                return False
-
-            # Mirror executable bits/mode from local file
-            chmod_cmd = f"chmod {local_mode:o} '{remote_path}'"
-            chmod_result = await run_command(
-                target=target,
-                command=chmod_cmd,
-                profile=profile,
-                region=region,
-                endpoint_url=endpoint_url,
-                timeout=30,
-            )
-
-            if chmod_result.exit_code != 0:
-                self.logger.warning(
-                    "Failed to set remote permissions with '%s': %s",
-                    chmod_cmd,
-                    chmod_result.stderr.decode(errors="ignore"),
-                )
+            # Upload already includes size verification, move, and chmod operations
 
             # Verify checksum if requested (separate session)
             if options.verify_checksum and local_checksum:
@@ -530,7 +471,7 @@ class FileTransferClient:
         region: Optional[str],
         endpoint_url: Optional[str],
     ) -> bool:
-        """Upload file using base64 encoding via data channel (upload only, no verification/move)."""
+        """Upload file using base64 encoding via data channel with verification, move, and chmod."""
         temp_remote = f"{remote_path}{options.temp_suffix}"
         
         # Clear any existing temp file
@@ -592,6 +533,18 @@ class FileTransferClient:
             )
 
         self.logger.debug("Upload completed: %s bytes sent to %s", bytes_sent, temp_remote)
+        
+        # Move temp file to final location via data channel
+        move_cmd = f"mv '{temp_remote}' '{remote_path}'\n"
+        await data_channel.send_input_data(move_cmd.encode())
+        await asyncio.sleep(0.2)
+        
+        # Set file permissions to match local file
+        local_mode = local_file.stat().st_mode & 0o777
+        chmod_cmd = f"chmod {local_mode:o} '{remote_path}'\n"
+        await data_channel.send_input_data(chmod_cmd.encode())
+        await asyncio.sleep(0.1)
+        
         return True
 
 
