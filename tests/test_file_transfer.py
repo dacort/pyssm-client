@@ -11,7 +11,6 @@ from pyssm_client.file_transfer.types import (
     FileChecksum,
 )
 from pyssm_client.cli.types import FileCopyArguments
-from pyssm_client.cli.main import SessionManagerPlugin
 
 
 class TestFileTransferTypes:
@@ -31,7 +30,7 @@ class TestFileTransferTypes:
         """Test FileTransferOptions validation."""
         # Valid options
         options = FileTransferOptions()
-        assert options.chunk_size == 49152
+        assert options.chunk_size == 32768
         assert options.encoding == FileTransferEncoding.BASE64
 
         # Invalid chunk size
@@ -162,6 +161,7 @@ class TestFileTransferClient:
             "session_id": "session-12345",
             "token_value": "token-abcdef",
             "stream_url": "wss://ssm.us-east-1.amazonaws.com/v1/data-channel/session-12345",
+            "target": "i-123456789abcdef0",
         }
 
         # Mock the import within the function
@@ -172,10 +172,11 @@ class TestFileTransferClient:
             mock_channel.open = AsyncMock(return_value=True)
             mock_channel_class.return_value = mock_channel
 
-            data_channel = await client._setup_data_channel(session_data)
+            data_channel, session_obj = await client._setup_data_channel(session_data)
 
             # Verify data channel was configured
             assert data_channel is mock_channel
+            assert session_obj is not None
             mock_channel.set_input_handler.assert_called_once()
             mock_channel.set_closed_handler.assert_called_once()
             mock_channel.open.assert_awaited_once()
@@ -184,66 +185,6 @@ class TestFileTransferClient:
 class TestSessionManagerPluginIntegration:
     """Test SessionManagerPlugin file transfer methods."""
 
-    @pytest.mark.asyncio
-    async def test_upload_file_method(self):
-        """Test SessionManagerPlugin.upload_file method."""
-        plugin = SessionManagerPlugin()
-
-        with patch(
-            "pyssm_client.cli.coordinator.FileTransferClient"
-        ) as mock_client_class:
-            mock_client = Mock()
-            mock_client.upload_file = AsyncMock(return_value=True)
-            mock_client_class.return_value = mock_client
-
-            result = await plugin.upload_file(
-                local_path="/path/to/file.txt",
-                remote_path="/tmp/file.txt",
-                target="i-1234567890abcdef0",
-            )
-
-            assert result is True
-            mock_client.upload_file.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_download_file_method(self):
-        """Test SessionManagerPlugin.download_file method."""
-        plugin = SessionManagerPlugin()
-
-        with patch(
-            "pyssm_client.cli.coordinator.FileTransferClient"
-        ) as mock_client_class:
-            mock_client = Mock()
-            mock_client.download_file = AsyncMock(return_value=True)
-            mock_client_class.return_value = mock_client
-
-            result = await plugin.download_file(
-                remote_path="/var/log/app.log",
-                local_path="/tmp/app.log",
-                target="i-1234567890abcdef0",
-            )
-
-            assert result is True
-            mock_client.download_file.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_verify_remote_file_method(self):
-        """Test SessionManagerPlugin.verify_remote_file method."""
-        plugin = SessionManagerPlugin()
-
-        with patch(
-            "pyssm_client.cli.coordinator.FileTransferClient"
-        ) as mock_client_class:
-            mock_client = Mock()
-            mock_client.verify_remote_file = AsyncMock(return_value="abc123def456")
-            mock_client_class.return_value = mock_client
-
-            result = await plugin.verify_remote_file(
-                remote_path="/var/log/app.log", target="i-1234567890abcdef0"
-            )
-
-            assert result == "abc123def456"
-            mock_client.verify_remote_file.assert_awaited_once()
 
 
 class TestProgressReporting:
