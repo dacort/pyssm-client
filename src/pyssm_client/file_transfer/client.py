@@ -56,7 +56,6 @@ class FileTransferClient:
         options = options or FileTransferOptions()
 
         upload_success = False
-        local_mode = local_file.stat().st_mode & 0o777
 
         try:
             # Compute local checksum if verification enabled
