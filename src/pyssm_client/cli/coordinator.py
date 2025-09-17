@@ -7,7 +7,7 @@ import signal
 import sys
 import termios
 import tty
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..communicator.data_channel import SessionDataChannel
 from ..communicator.utils import create_websocket_config
@@ -474,4 +474,3 @@ class SessionManagerPlugin:
             except asyncio.CancelledError:
                 pass
         self._resize_task = None
-
