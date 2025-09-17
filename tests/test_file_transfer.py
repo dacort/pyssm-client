@@ -186,7 +186,6 @@ class TestSessionManagerPluginIntegration:
     """Test SessionManagerPlugin file transfer methods."""
 
 
-
 class TestProgressReporting:
     """Test progress reporting functionality."""
 

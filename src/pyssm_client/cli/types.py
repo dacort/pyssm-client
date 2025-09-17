@@ -167,7 +167,9 @@ class FileCopyArguments:
 
     # Transfer options
     encoding: FileTransferEncoding = FileTransferEncoding.BASE64
-    chunk_size: int = 32768  # 32KB (safe for base64 encoding + protocol overhead within 64KB frames)
+    chunk_size: int = (
+        32768  # 32KB (safe for base64 encoding + protocol overhead within 64KB frames)
+    )
     verify_checksum: bool = True
     checksum_type: ChecksumType = ChecksumType.MD5
 

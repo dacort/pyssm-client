@@ -203,7 +203,9 @@ class FileTransferClient:
 
                 if success and options.verify_checksum and remote_checksum:
                     # Verify local checksum
-                    local_checksum = FileChecksum.compute(local_file, options.checksum_type)
+                    local_checksum = FileChecksum.compute(
+                        local_file, options.checksum_type
+                    )
 
                     if local_checksum.value != remote_checksum:
                         self.logger.error(
@@ -389,6 +391,7 @@ class FileTransferClient:
 
         # Set client info and attach to session
         from ..constants import CLIENT_VERSION
+
         try:
             data_channel.set_client_info("pyssm-client", CLIENT_VERSION)
         except Exception:
@@ -472,7 +475,7 @@ class FileTransferClient:
     ) -> bool:
         """Upload file using base64 encoding via data channel with verification, move, and chmod."""
         temp_remote = f"{remote_path}{options.temp_suffix}"
-        
+
         # Clear any existing temp file
         clear_cmd = f"rm -f '{temp_remote}'\n"
         await data_channel.send_input_data(clear_cmd.encode())
@@ -482,19 +485,19 @@ class FileTransferClient:
         bytes_sent = 0
         file_size = local_file.stat().st_size
 
-        self.logger.info(
-            "Starting upload of %s (%s bytes)", local_file, file_size
-        )
+        self.logger.info("Starting upload of %s (%s bytes)", local_file, file_size)
 
         with open(local_file, "rb") as f:
             while chunk := f.read(options.chunk_size):
                 # Encode chunk to base64
-                encoded_chunk = base64.b64encode(chunk).decode('ascii')
-                
+                encoded_chunk = base64.b64encode(chunk).decode("ascii")
+
                 # Send chunk using simple append (no heredoc complexity)
-                append_cmd = f"echo -n '{encoded_chunk}' | base64 -d >> '{temp_remote}'\n"
+                append_cmd = (
+                    f"echo -n '{encoded_chunk}' | base64 -d >> '{temp_remote}'\n"
+                )
                 await data_channel.send_input_data(append_cmd.encode())
-                
+
                 bytes_sent += len(chunk)
 
                 # Progress callback
@@ -531,21 +534,22 @@ class FileTransferClient:
                 file_size,
             )
 
-        self.logger.debug("Upload completed: %s bytes sent to %s", bytes_sent, temp_remote)
-        
+        self.logger.debug(
+            "Upload completed: %s bytes sent to %s", bytes_sent, temp_remote
+        )
+
         # Move temp file to final location via data channel
         move_cmd = f"mv '{temp_remote}' '{remote_path}'\n"
         await data_channel.send_input_data(move_cmd.encode())
         await asyncio.sleep(0.2)
-        
+
         # Set file permissions to match local file
         local_mode = local_file.stat().st_mode & 0o777
         chmod_cmd = f"chmod {local_mode:o} '{remote_path}'\n"
         await data_channel.send_input_data(chmod_cmd.encode())
         await asyncio.sleep(0.1)
-        
-        return True
 
+        return True
 
     async def _upload_raw(
         self,
@@ -624,7 +628,10 @@ class FileTransferClient:
                 last_size = 0
 
             self.logger.debug(
-                "Remote file %s currently %s/%s bytes", remote_path, last_size, expected_size
+                "Remote file %s currently %s/%s bytes",
+                remote_path,
+                last_size,
+                expected_size,
             )
 
             if last_size >= expected_size:

@@ -34,7 +34,9 @@ class FileTransferOptions:
     """Options for file transfer operations."""
 
     # Transfer configuration
-    chunk_size: int = 32768  # 32KB chunks (safe for base64 encoding + protocol overhead within 64KB frames)
+    chunk_size: int = (
+        32768  # 32KB chunks (safe for base64 encoding + protocol overhead within 64KB frames)
+    )
     encoding: FileTransferEncoding = FileTransferEncoding.BASE64
     verify_checksum: bool = True
     checksum_type: ChecksumType = ChecksumType.MD5

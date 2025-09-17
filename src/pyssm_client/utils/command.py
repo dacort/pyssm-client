@@ -219,9 +219,7 @@ async def run_command(
             lines = stdout_text.split("\n")
             filtered_lines = [line for line in lines if "__SSM_EXIT__:" not in line]
             clean_stdout = "\n".join(filtered_lines)
-            final_stdout = _filter_shell_output(
-                clean_stdout.encode("utf-8"), command
-            )
+            final_stdout = _filter_shell_output(clean_stdout.encode("utf-8"), command)
         else:
             final_stdout = _filter_shell_output(bytes(stdout_buf), command)
 
