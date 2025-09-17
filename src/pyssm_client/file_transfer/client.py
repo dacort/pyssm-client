@@ -56,6 +56,7 @@ class FileTransferClient:
         options = options or FileTransferOptions()
 
         upload_success = False
+        local_mode = local_file.stat().st_mode & 0o777
 
         try:
             # Compute local checksum if verification enabled
@@ -152,6 +153,24 @@ class FileTransferClient:
             if move_result.exit_code != 0:
                 self.logger.error(f"Failed to move temp file: {move_result.stderr.decode()}")
                 return False
+
+            # Mirror executable bits/mode from local file
+            chmod_cmd = f"chmod {local_mode:o} '{remote_path}'"
+            chmod_result = await run_command(
+                target=target,
+                command=chmod_cmd,
+                profile=profile,
+                region=region,
+                endpoint_url=endpoint_url,
+                timeout=30,
+            )
+
+            if chmod_result.exit_code != 0:
+                self.logger.warning(
+                    "Failed to set remote permissions with '%s': %s",
+                    chmod_cmd,
+                    chmod_result.stderr.decode(errors="ignore"),
+                )
 
             # Verify checksum if requested (separate session)
             if options.verify_checksum and local_checksum:
