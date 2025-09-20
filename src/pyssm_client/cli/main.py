@@ -392,7 +392,7 @@ def exec_command(
     endpoint_url: str | None,
     timeout: int,
 ) -> None:
-    """Execute a single command and return stdout/stderr/exit code."""
+    """Execute a single command with real-time streaming output."""
     try:
         result = run_command_sync(
             target=target,
@@ -401,22 +401,10 @@ def exec_command(
             region=region,
             endpoint_url=endpoint_url,
             timeout=timeout,
+            stream_output=True,
         )
-        # Print streams; exit with command exit code
-        if result.stdout:
-            try:
-                sys.stdout.buffer.write(result.stdout)
-                sys.stdout.buffer.flush()
-            except Exception:
-                click.echo(result.stdout.decode("utf-8", errors="replace"), nl=False)
-        if result.stderr:
-            try:
-                sys.stderr.buffer.write(result.stderr)
-                sys.stderr.buffer.flush()
-            except Exception:
-                click.echo(
-                    result.stderr.decode("utf-8", errors="replace"), nl=False, err=True
-                )
+        # Output is automatically streamed during execution
+        # Just exit with the command's exit code
         sys.exit(result.exit_code)
     except Exception as e:
         click.echo(f"Execution failed: {e}", err=True)
