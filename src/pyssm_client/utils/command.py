@@ -74,6 +74,7 @@ async def run_command(
     region: Optional[str] = None,
     endpoint_url: Optional[str] = None,
     timeout: int = 600,
+    stream_output: bool = False,
 ) -> CommandResult:
     """Execute a single command on target and return stdout/stderr/exit_code.
 
@@ -86,6 +87,7 @@ async def run_command(
         region: AWS region
         endpoint_url: Custom AWS endpoint URL
         timeout: Command timeout in seconds
+        stream_output: Whether to stream filtered output to stdout/stderr in real-time
 
     Returns:
         CommandResult with separated stdout, stderr, and exit code
@@ -146,9 +148,40 @@ async def run_command(
     session_done = asyncio.Event()
     exit_code = 0
 
+    # Line buffers for streaming
+    stdout_line_buf = bytearray()
+    stderr_line_buf = bytearray()
+
     def handle_stdout(data: bytes) -> None:
         """Handle stdout from shell."""
-        nonlocal stdout_buf, exit_code
+        nonlocal stdout_buf, exit_code, stdout_line_buf
+
+        # Add to line buffer for streaming
+        stdout_line_buf.extend(data)
+
+        # Process complete lines for streaming
+        while b"\n" in stdout_line_buf:
+            line_end = stdout_line_buf.index(b"\n")
+            line = stdout_line_buf[: line_end + 1]
+            stdout_line_buf = stdout_line_buf[line_end + 1 :]
+
+            # Apply existing filter to the line and stream if requested
+            if stream_output:
+                filtered = _filter_shell_output(line, command)
+                if filtered and filtered.strip():
+                    try:
+                        import sys
+
+                        sys.stdout.buffer.write(filtered)
+                        sys.stdout.buffer.flush()
+                    except Exception:
+                        try:
+                            import sys
+
+                            sys.stdout.write(filtered.decode("utf-8", errors="replace"))
+                            sys.stdout.flush()
+                        except Exception:
+                            pass
 
         # Check for exit status marker in stdout
         try:
@@ -172,7 +205,35 @@ async def run_command(
 
     def handle_stderr(data: bytes) -> None:
         """Handle stderr from shell."""
-        nonlocal stderr_buf
+        nonlocal stderr_buf, stderr_line_buf
+
+        # Add to line buffer for streaming
+        stderr_line_buf.extend(data)
+
+        # Process complete lines for streaming
+        while b"\n" in stderr_line_buf:
+            line_end = stderr_line_buf.index(b"\n")
+            line = stderr_line_buf[: line_end + 1]
+            stderr_line_buf = stderr_line_buf[line_end + 1 :]
+
+            # Apply existing filter to stderr line and stream if requested
+            if stream_output:
+                filtered = _filter_shell_output(line, command)
+                if filtered and filtered.strip():
+                    try:
+                        import sys
+
+                        sys.stderr.buffer.write(filtered)
+                        sys.stderr.buffer.flush()
+                    except Exception:
+                        try:
+                            import sys
+
+                            sys.stderr.write(filtered.decode("utf-8", errors="replace"))
+                            sys.stderr.flush()
+                        except Exception:
+                            pass
+
         stderr_buf.extend(data)
 
     def handle_closed() -> None:
@@ -250,6 +311,7 @@ def run_command_sync(
     region: Optional[str] = None,
     endpoint_url: Optional[str] = None,
     timeout: int = 600,
+    stream_output: bool = False,
 ) -> CommandResult:
     """Synchronous wrapper for run_command()."""
     return asyncio.run(
@@ -260,5 +322,6 @@ def run_command_sync(
             region=region,
             endpoint_url=endpoint_url,
             timeout=timeout,
+            stream_output=stream_output,
         )
     )

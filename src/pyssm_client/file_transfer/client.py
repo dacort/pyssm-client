@@ -339,10 +339,10 @@ class FileTransferClient:
 
     async def _setup_data_channel(self, session_data: dict) -> tuple[Any, Any]:
         """Set up data channel for file transfer."""
-        from ..communicator.data_channel import SessionDataChannel
         from ..cli.types import ConnectArguments
-        from ..session.registry import get_session_registry
+        from ..communicator.data_channel import SessionDataChannel
         from ..session.plugins import StandardStreamPlugin
+        from ..session.registry import get_session_registry
         from ..session.session_handler import SessionHandler
 
         # Create session object first
@@ -506,15 +506,6 @@ class FileTransferClient:
 
                 # Small delay to avoid overwhelming remote
                 await asyncio.sleep(0.005)
-
-        if options.progress_callback:
-            try:
-                import sys
-
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-            except Exception:
-                pass
 
         self.logger.info("All chunks sent; waiting for remote flush...")
         remote_size = await self._wait_for_remote_size(
