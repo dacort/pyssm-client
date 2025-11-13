@@ -25,7 +25,7 @@ uv add pyssm-client
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.10+
 - AWS credentials discoverable via environment or `~/.aws/credentials`
 
 ## Quick Start
