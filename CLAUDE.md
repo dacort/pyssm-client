@@ -91,7 +91,6 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - smux v1 protocol implementation (xtaci/smux) for TCP multiplexing over SSM data channel
 - PortForwardBridge with local TCP listener and bidirectional proxying
 - Raw binary data path bypassing UTF-8 decode for data integrity
-- Agent version check for TCP multiplexing support (>= 3.0.196.0)
 - Automatic SSM document selection (`AWS-StartPortForwardingSession` vs `AWS-StartPortForwardingSessionToRemoteHost`)
 - Auto-assign local port when `--local-port` is 0
 - Live tested against AWS SSM with RDS remote-host port forwarding

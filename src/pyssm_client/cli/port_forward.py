@@ -1,7 +1,7 @@
 """Port forwarding bridge: local TCP listener <-> SSM data channel via smux.
 
-Modern SSM agents (>= 3.0.196.0) use the xtaci/smux stream multiplexing
-protocol for port forwarding.  This module implements the client side:
+This module implements the client side of the xtaci/smux stream multiplexing
+protocol used by SSM agents for port forwarding:
 
 Protocol flow (matches Go reference muxportforwarding.go):
 1. SSM handshake completes (HandshakeRequest/Response/Complete).

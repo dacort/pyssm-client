@@ -882,7 +882,7 @@ session-manager-plugin ssh --target i-1234567890abcdef0 --profile production --r
 
 The `port-forward` command enables TCP port forwarding through AWS SSM sessions. It supports both direct port forwarding (to a port on the target instance) and remote host forwarding (to a host reachable from the target instance, e.g., an RDS endpoint).
 
-Port forwarding uses the **smux v1 protocol** (xtaci/smux) for multiplexing TCP connections over the SSM data channel. This is required for SSM agents >= 3.0.196.0.
+Port forwarding uses the **smux v1 protocol** (xtaci/smux) for multiplexing TCP connections over the SSM data channel.
 
 ### Architecture
 
@@ -990,7 +990,6 @@ session-manager-plugin port-forward --target i-1234567890abcdef0 \
 - [x] smux v1 protocol implementation for TCP multiplexing
 - [x] PortForwardBridge with local TCP listener and bidirectional proxying
 - [x] Raw binary data path (bypasses UTF-8 decode)
-- [x] Agent version check for TCP multiplexing support (>= 3.0.196.0)
 - [x] Auto-assign local port when `--local-port` is 0
 - [x] Live tested against AWS SSM with RDS remote-host port forwarding
 - [x] 37 unit tests passing for port forwarding

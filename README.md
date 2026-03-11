@@ -113,7 +113,7 @@ The command automatically selects the appropriate SSM document:
 - `AWS-StartPortForwardingSession` for direct instance port forwarding
 - `AWS-StartPortForwardingSessionToRemoteHost` when `--remote-host` is specified
 
-Port forwarding uses the smux v1 multiplexing protocol for TCP connections over the SSM data channel, compatible with SSM agents >= 3.0.196.0.
+Port forwarding uses the smux v1 multiplexing protocol for TCP connections over the SSM data channel.
 
 
 ### `exec`: Execute a single command
