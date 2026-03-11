@@ -6,7 +6,7 @@ The goal is to build a Python implementation of the [AWS Session Manager Plugin]
 - Use the current system python, which is 3.13.3
 - The project will eventually be published as a pypi module that can be consumed in other projects
 - Do _not_ use fake or mock data
-- You MUST prioritize simple, readable code with minimal abstraction - avoid premature optimization. Strice for elegant, minimal solutions that reduce complexity. Focus on clear implementation that's easy to understand.
+- You MUST prioritize simple, readable code with minimal abstraction - avoid premature optimization. Strive for elegant, minimal solutions that reduce complexity. Focus on clear implementation that's easy to understand.
 - The project must mirror the Go reference implementation as much as possible.
 
 ## Plan
