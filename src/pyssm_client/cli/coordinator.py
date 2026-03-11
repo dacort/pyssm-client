@@ -109,13 +109,17 @@ class SessionManagerPlugin:
             await self._cleanup()
 
     async def run_port_forward_session(
-        self, args: ConnectArguments, local_port: int
+        self,
+        args: ConnectArguments,
+        local_port: int,
+        port_parameters: dict[str, str] | None = None,
     ) -> int:
         """Run a port forwarding session.
 
         Args:
             args: Connect arguments with session details (session_type must be "Port").
             local_port: Local port to listen on (0 for auto-assign).
+            port_parameters: Port config dict sent to the agent after handshake.
 
         Returns:
             Exit code (0 on success).
@@ -159,12 +163,16 @@ class SessionManagerPlugin:
                 pass
             self._current_session.set_data_channel(data_channel)
 
+            # Create and start port forwarding bridge BEFORE executing
+            # the session so handlers are registered when the SSM agent
+            # sends PARAMETER/FLAG messages during the handshake.
+            bridge = PortForwardBridge(
+                data_channel, self._shutdown_event, port_parameters
+            )
+            actual_port = await bridge.start(local_port)
+
             # Execute session (opens WebSocket, sends handshake)
             await self._current_session.execute()
-
-            # Create and start port forwarding bridge
-            bridge = PortForwardBridge(data_channel, self._shutdown_event)
-            actual_port = await bridge.start(local_port)
 
             print(
                 f"Port forwarding listening on 127.0.0.1:{actual_port}",

@@ -47,6 +47,10 @@ class SessionDataChannel(IDataChannel):
         # Port forwarding handlers (optional)
         self._parameter_handler: Callable[[bytes, dict[str, Any]], None] | None = None
         self._flag_handler: Callable[[bytes, dict[str, Any]], None] | None = None
+        self._handshake_complete_handler: Callable[[], None] | None = None
+        # Raw binary input handler — when set, OUTPUT payloads are delivered as
+        # raw bytes (no text decode), used by port forwarding for binary data.
+        self._raw_input_handler: Callable[[bytes], None] | None = None
 
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
@@ -236,6 +240,18 @@ class SessionDataChannel(IDataChannel):
         """Set handler for port forwarding FLAG messages."""
         self._flag_handler = handler
 
+    def set_handshake_complete_handler(self, handler: Callable[[], None]) -> None:
+        """Set handler called when the SSM handshake finishes."""
+        self._handshake_complete_handler = handler
+
+    def set_raw_input_handler(self, handler: Callable[[bytes], None]) -> None:
+        """Set raw binary input handler (bypasses text decode).
+
+        When set, OUTPUT payload bytes are delivered directly without
+        UTF-8 decode/encode roundtrip.  Used by port forwarding.
+        """
+        self._raw_input_handler = handler
+
     def set_coalescing(self, enabled: bool, delay_sec: float | None = None) -> None:
         """Configure input coalescing behavior."""
         self._coalesce_enabled = enabled
@@ -254,10 +270,9 @@ class SessionDataChannel(IDataChannel):
             if parsed_message.client_message:
                 client_message = parsed_message.client_message
                 self.logger.debug(
-                    f"Parsed AWS SSM message: type={client_message.message_type}, "
+                    f"Parsed message: type={client_message.message_type.strip()}, "
                     f"payload_type={client_message.payload_type}, "
-                    f"payload_length={client_message.payload_length}, "
-                    f"sequence={client_message.sequence_number} (expected={self._expected_sequence_number})"
+                    f"seq={client_message.sequence_number} (expected={self._expected_sequence_number})"
                 )
 
             # Create handler context
@@ -269,6 +284,7 @@ class SessionDataChannel(IDataChannel):
                 stderr_handler=self._stderr_handler,
                 parameter_handler=self._parameter_handler,
                 flag_handler=self._flag_handler,
+                raw_input_handler=self._raw_input_handler,
             )
 
             # Route to appropriate handler
@@ -292,6 +308,14 @@ class SessionDataChannel(IDataChannel):
             if not processed:
                 return
 
+            # Notify listeners when handshake completes
+            if parsed_message.message_type == ParsedMessageType.HANDSHAKE_COMPLETE:
+                if self._handshake_complete_handler:
+                    try:
+                        self._handshake_complete_handler()
+                    except Exception as e:
+                        self.logger.debug(f"Handshake complete handler error: {e}")
+
             # Handle input permission changes
             if input_change is not None:
                 if parsed_message.message_type == ParsedMessageType.START_PUBLICATION:
@@ -313,19 +337,26 @@ class SessionDataChannel(IDataChannel):
 
                 # Update expected sequence for output stream messages
                 if client_message.message_type == MESSAGE_OUTPUT_STREAM:
+                    seq = client_message.sequence_number
                     if new_seq is not None:
-                        # In-order message processed
+                        # Router explicitly advanced sequence (shell output)
                         self._expected_sequence_number = new_seq
                         self.logger.debug(
                             f"Updated expected sequence to {self._expected_sequence_number}"
                         )
                         self._drain_buffered_output()
-                    elif (
-                        client_message.sequence_number > self._expected_sequence_number
-                    ):
+                    elif seq == self._expected_sequence_number:
+                        # In-order message whose handler didn't advance seq
+                        # (handshake, parameter, flag, etc.) — advance it now.
+                        self._expected_sequence_number = seq + 1
+                        self.logger.debug(
+                            f"Updated expected sequence to {self._expected_sequence_number}"
+                        )
+                        self._drain_buffered_output()
+                    elif seq > self._expected_sequence_number:
                         # Out-of-order message; buffer it
                         if parsed_message.raw_data:
-                            self._incoming_buffer[client_message.sequence_number] = (
+                            self._incoming_buffer[seq] = (
                                 parsed_message.raw_data
                             )
                         self.logger.debug(
@@ -349,19 +380,22 @@ class SessionDataChannel(IDataChannel):
                 raw = self._incoming_buffer.pop(self._expected_sequence_number)
                 cm = parse_client_message(raw)
                 if cm and cm.is_shell_output():
-                    shell_data = cm.get_shell_data()
-                    if shell_data and self._input_handler:
-                        self._input_handler(shell_data.encode("utf-8"))
-                    # Route to per-stream handlers for buffered messages too
-                    try:
-                        if cm.payload_type == PayloadType.OUTPUT:
-                            if self._stdout_handler:
-                                self._stdout_handler(shell_data.encode("utf-8"))
-                        elif cm.payload_type == PayloadType.STDERR:
-                            if self._stderr_handler:
-                                self._stderr_handler(shell_data.encode("utf-8"))
-                    except Exception:
-                        pass
+                    if self._raw_input_handler:
+                        self._raw_input_handler(cm.payload)
+                    else:
+                        shell_data = cm.get_shell_data()
+                        if shell_data and self._input_handler:
+                            self._input_handler(shell_data.encode("utf-8"))
+                        # Route to per-stream handlers for buffered messages too
+                        try:
+                            if cm.payload_type == PayloadType.OUTPUT:
+                                if self._stdout_handler:
+                                    self._stdout_handler(shell_data.encode("utf-8"))
+                            elif cm.payload_type == PayloadType.STDERR:
+                                if self._stderr_handler:
+                                    self._stderr_handler(shell_data.encode("utf-8"))
+                        except Exception:
+                            pass
                 self._expected_sequence_number += 1
                 self.logger.debug(
                     f"Drained buffered seq; expected now {self._expected_sequence_number}"

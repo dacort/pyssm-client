@@ -308,8 +308,17 @@ def port_forward(ctx: click.Context, **kwargs: Any) -> None:
 
         # Run port forwarding session
         plugin = SessionManagerPlugin()
+        # Build flat port parameters dict for the bridge to send to the agent
+        port_params: Dict[str, str] = {
+            "portNumber": str(pf_args.remote_port),
+            "localPortNumber": str(pf_args.local_port),
+        }
+        if pf_args.remote_host:
+            port_params["host"] = pf_args.remote_host
         exit_code = asyncio.run(
-            plugin.run_port_forward_session(connect_args, pf_args.local_port)
+            plugin.run_port_forward_session(
+                connect_args, pf_args.local_port, port_params
+            )
         )
         sys.exit(exit_code)
 

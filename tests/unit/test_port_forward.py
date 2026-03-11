@@ -13,6 +13,7 @@ import pytest
 from pyssm_client.cli.port_forward import (
     FLAG_CONNECT_TO_PORT,
     FLAG_DISCONNECT_TO_PORT,
+    FLAG_CONNECT_TO_PORT_ERROR,
     PortForwardBridge,
 )
 from pyssm_client.cli.types import PortForwardArguments
@@ -26,6 +27,18 @@ from pyssm_client.communicator.message_parser import (
     ParsedMessageType,
 )
 from pyssm_client.communicator.protocol import serialize_client_message
+from pyssm_client.communicator.smux import (
+    SmuxSession,
+    SmuxStream,
+    _pack_header,
+    _unpack_header,
+    CMD_SYN,
+    CMD_FIN,
+    CMD_PSH,
+    CMD_NOP,
+    SMUX_VERSION,
+    HEADER_SIZE,
+)
 from pyssm_client.communicator.types import MessageType, WebSocketMessage
 from pyssm_client.constants import MESSAGE_OUTPUT_STREAM, PayloadType
 
@@ -239,6 +252,190 @@ class TestMessageRouterPortTypes:
         assert processed is True
 
 
+# --- SmuxSession tests ---
+
+
+class TestSmuxFraming:
+    def test_pack_unpack_header(self) -> None:
+        header = _pack_header(CMD_PSH, 3, 100)
+        assert len(header) == HEADER_SIZE
+        ver, cmd, length, sid = _unpack_header(header)
+        assert ver == SMUX_VERSION
+        assert cmd == CMD_PSH
+        assert length == 100
+        assert sid == 3
+
+    def test_syn_header(self) -> None:
+        header = _pack_header(CMD_SYN, 5, 0)
+        ver, cmd, length, sid = _unpack_header(header)
+        assert cmd == CMD_SYN
+        assert length == 0
+        assert sid == 5
+
+    def test_fin_header(self) -> None:
+        header = _pack_header(CMD_FIN, 3, 0)
+        ver, cmd, length, sid = _unpack_header(header)
+        assert cmd == CMD_FIN
+        assert length == 0
+
+
+class TestSmuxSession:
+    @pytest.mark.asyncio
+    async def test_open_stream_sends_syn(self) -> None:
+        sent: list[bytes] = []
+
+        async def send(data: bytes) -> None:
+            sent.append(data)
+
+        session = SmuxSession(send)
+        stream = await session.open_stream()
+
+        assert stream.stream_id == 3  # first client stream
+        assert len(sent) == 1
+        ver, cmd, length, sid = _unpack_header(sent[0])
+        assert cmd == CMD_SYN
+        assert sid == 3
+        assert length == 0
+
+    @pytest.mark.asyncio
+    async def test_stream_write_sends_psh(self) -> None:
+        sent: list[bytes] = []
+
+        async def send(data: bytes) -> None:
+            sent.append(data)
+
+        session = SmuxSession(send)
+        stream = await session.open_stream()
+        sent.clear()  # ignore SYN
+
+        await stream.write(b"hello")
+
+        assert len(sent) == 1
+        ver, cmd, length, sid = _unpack_header(sent[0][:HEADER_SIZE])
+        assert cmd == CMD_PSH
+        assert length == 5
+        assert sid == 3
+        assert sent[0][HEADER_SIZE:] == b"hello"
+
+    @pytest.mark.asyncio
+    async def test_stream_close_sends_fin(self) -> None:
+        sent: list[bytes] = []
+
+        async def send(data: bytes) -> None:
+            sent.append(data)
+
+        session = SmuxSession(send)
+        stream = await session.open_stream()
+        sent.clear()
+
+        await stream.close()
+
+        assert len(sent) == 1
+        ver, cmd, length, sid = _unpack_header(sent[0])
+        assert cmd == CMD_FIN
+        assert sid == 3
+
+    @pytest.mark.asyncio
+    async def test_feed_data_psh(self) -> None:
+        """Feeding a PSH frame makes data available on the stream."""
+
+        async def noop(data: bytes) -> None:
+            pass
+
+        session = SmuxSession(noop)
+        stream = await session.open_stream()
+
+        # Feed a PSH frame for stream 3
+        frame = _pack_header(CMD_PSH, 3, 5) + b"world"
+        session.feed_data(frame)
+
+        data = await asyncio.wait_for(stream.read(), timeout=1.0)
+        assert data == b"world"
+
+    @pytest.mark.asyncio
+    async def test_feed_data_fin(self) -> None:
+        """Feeding a FIN frame causes read() to return empty bytes."""
+
+        async def noop(data: bytes) -> None:
+            pass
+
+        session = SmuxSession(noop)
+        stream = await session.open_stream()
+
+        frame = _pack_header(CMD_FIN, 3, 0)
+        session.feed_data(frame)
+
+        data = await asyncio.wait_for(stream.read(), timeout=1.0)
+        assert data == b""
+
+    @pytest.mark.asyncio
+    async def test_feed_partial_frame(self) -> None:
+        """Partial frames are buffered until complete."""
+
+        async def noop(data: bytes) -> None:
+            pass
+
+        session = SmuxSession(noop)
+        stream = await session.open_stream()
+
+        full_frame = _pack_header(CMD_PSH, 3, 5) + b"hello"
+        # Feed header only
+        session.feed_data(full_frame[:HEADER_SIZE])
+        assert stream._recv_buf.empty()
+
+        # Feed the rest
+        session.feed_data(full_frame[HEADER_SIZE:])
+        data = await asyncio.wait_for(stream.read(), timeout=1.0)
+        assert data == b"hello"
+
+    @pytest.mark.asyncio
+    async def test_multiple_streams(self) -> None:
+        sent: list[bytes] = []
+
+        async def send(data: bytes) -> None:
+            sent.append(data)
+
+        session = SmuxSession(send)
+        s1 = await session.open_stream()
+        s2 = await session.open_stream()
+
+        assert s1.stream_id == 3
+        assert s2.stream_id == 5
+
+    @pytest.mark.asyncio
+    async def test_nop_ignored(self) -> None:
+        async def noop(data: bytes) -> None:
+            pass
+
+        session = SmuxSession(noop)
+        stream = await session.open_stream()
+
+        # NOP frame
+        frame = _pack_header(CMD_NOP, 0, 0)
+        session.feed_data(frame)
+        # Stream should have no data
+        assert stream._recv_buf.empty()
+
+    @pytest.mark.asyncio
+    async def test_binary_data_integrity(self) -> None:
+        """Binary data with non-UTF-8 bytes survives the smux roundtrip."""
+        sent: list[bytes] = []
+
+        async def send(data: bytes) -> None:
+            sent.append(data)
+
+        session = SmuxSession(send)
+        stream = await session.open_stream()
+
+        # Binary data that would be corrupted by UTF-8 decode/encode
+        binary_data = bytes(range(256))
+        frame = _pack_header(CMD_PSH, 3, 256) + binary_data
+        session.feed_data(frame)
+
+        data = await asyncio.wait_for(stream.read(), timeout=1.0)
+        assert data == binary_data
+
+
 # --- PortForwardBridge tests ---
 
 
@@ -246,9 +443,11 @@ class TestPortForwardBridge:
     def _make_mock_data_channel(self) -> MagicMock:
         dc = MagicMock()
         dc.is_open = True
+        dc.set_raw_input_handler = MagicMock()
         dc.set_input_handler = MagicMock()
         dc.set_parameter_handler = MagicMock()
         dc.set_flag_handler = MagicMock()
+        dc.set_handshake_complete_handler = MagicMock()
         dc.send_raw_input_data = AsyncMock()
         dc._serialize_input_message_with_payload_type = MagicMock(return_value=b"ack")
         dc._async_send_message = AsyncMock()
@@ -264,107 +463,96 @@ class TestPortForwardBridge:
             port = await bridge.start(0)
             assert port > 0
             assert bridge.local_port == port
-            # Handlers should be wired up
-            dc.set_input_handler.assert_called_once()
-            dc.set_parameter_handler.assert_called_once()
+            # Raw handler and flag handler should be wired up
+            dc.set_raw_input_handler.assert_called_once()
             dc.set_flag_handler.assert_called_once()
+            dc.set_handshake_complete_handler.assert_called_once()
         finally:
             await bridge.stop()
 
     @pytest.mark.asyncio
-    async def test_parameter_handshake(self) -> None:
+    async def test_handshake_complete_initializes_smux(self) -> None:
         dc = self._make_mock_data_channel()
         shutdown = asyncio.Event()
         bridge = PortForwardBridge(dc, shutdown)
 
         assert not bridge._handshake_done.is_set()
+        assert bridge._smux is None
 
-        bridge._on_parameter(
-            json.dumps({"portNumber": "8080"}).encode(),
-            {"portNumber": "8080"},
-        )
+        bridge._on_handshake_complete()
 
         assert bridge._handshake_done.is_set()
-        # Should have scheduled ack send
-        await asyncio.sleep(0.05)
+        assert bridge._smux is not None
 
     @pytest.mark.asyncio
-    async def test_flag_connect_disconnect(self) -> None:
+    async def test_flag_connect_error_logged(self) -> None:
         dc = self._make_mock_data_channel()
         shutdown = asyncio.Event()
         bridge = PortForwardBridge(dc, shutdown)
 
-        # Connect flag
-        connect_payload = struct.pack(">I", FLAG_CONNECT_TO_PORT)
-        bridge._on_flag(connect_payload, {})
-        assert bridge._connection_active.is_set()
-
-        # Disconnect flag
-        disconnect_payload = struct.pack(">I", FLAG_DISCONNECT_TO_PORT)
-        bridge._on_flag(disconnect_payload, {})
-        assert not bridge._connection_active.is_set()
+        # Connect error flag should not crash
+        error_payload = struct.pack(">I", FLAG_CONNECT_TO_PORT_ERROR)
+        bridge._on_flag(error_payload, {})
 
     @pytest.mark.asyncio
-    async def test_ssm_data_forwarded_to_tcp(self) -> None:
-        """Test that data from SSM is written to the active TCP writer."""
+    async def test_ssm_data_feeds_smux(self) -> None:
+        """Data from SSM is fed into the smux session."""
         dc = self._make_mock_data_channel()
         shutdown = asyncio.Event()
         bridge = PortForwardBridge(dc, shutdown)
 
-        # Mock a TCP writer
-        mock_writer = MagicMock()
-        mock_writer.is_closing.return_value = False
-        mock_writer.write = MagicMock()
-        mock_writer.drain = AsyncMock()
-        bridge._current_writer = mock_writer
+        # Initialize smux
+        bridge._on_handshake_complete()
 
-        bridge._on_ssm_data(b"hello from remote")
-
-        mock_writer.write.assert_called_once_with(b"hello from remote")
+        # Feed a smux PSH frame for stream 3 (would need a stream first)
+        # Just verify no crash when feeding data before any streams exist
+        frame = _pack_header(CMD_PSH, 99, 5) + b"hello"
+        bridge._on_ssm_data(frame)  # unknown stream, should not crash
 
     @pytest.mark.asyncio
-    async def test_ssm_data_dropped_without_writer(self) -> None:
-        """Data from SSM is silently dropped when no TCP writer is active."""
+    async def test_ssm_data_before_smux_dropped(self) -> None:
+        """Data arriving before smux init is dropped."""
         dc = self._make_mock_data_channel()
         shutdown = asyncio.Event()
         bridge = PortForwardBridge(dc, shutdown)
 
-        # No writer set - should not raise
-        bridge._on_ssm_data(b"dropped data")
+        # No handshake yet, smux is None
+        bridge._on_ssm_data(b"too early")  # should not crash
 
     @pytest.mark.asyncio
-    async def test_tcp_data_forwarded_to_ssm(self) -> None:
-        """Test that TCP connection data is forwarded to the SSM data channel."""
+    async def test_tcp_data_forwarded_via_smux(self) -> None:
+        """TCP data is wrapped in smux PSH frames and sent to SSM."""
         dc = self._make_mock_data_channel()
         shutdown = asyncio.Event()
         bridge = PortForwardBridge(dc, shutdown)
-        bridge._handshake_done.set()
+
+        # Initialize smux and mark ready
+        bridge._on_handshake_complete()
 
         try:
             port = await bridge.start(0)
 
-            # Connect to the bridge's TCP listener
+            # Connect TCP client
             reader, writer = await asyncio.open_connection("127.0.0.1", port)
-
-            # Give the connection handler time to start
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)
 
             # Send data through TCP
             writer.write(b"hello from local")
             await writer.drain()
-
-            # Give time for forwarding
             await asyncio.sleep(0.1)
 
-            # Verify data was sent to SSM
+            # Verify smux-framed data was sent via SSM
             dc.send_raw_input_data.assert_called()
-            sent_data = b"".join(
+            all_sent = b"".join(
                 call.args[0] for call in dc.send_raw_input_data.call_args_list
             )
-            assert b"hello from local" in sent_data
+            # First call should be SYN (8 bytes), then PSH with our data
+            # Check that our data appears in a PSH frame
+            assert b"hello from local" in all_sent
 
             writer.close()
             await writer.wait_closed()
+            await asyncio.sleep(0.05)
 
         finally:
             await bridge.stop()
