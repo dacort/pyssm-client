@@ -6,6 +6,7 @@ This phase integrates the session management and WebSocket communication compone
 
 **Phase 4A**: Core CLI structure with `connect` command (direct session parameters)
 **Phase 4B**: `ssh` command with AWS SSM integration (user-friendly target-based sessions)
+**Phase 4C**: `port-forward` command with smux-based TCP port forwarding
 
 ## Phase 4A Objectives
 
@@ -877,6 +878,123 @@ session-manager-plugin ssh --target i-1234567890abcdef0 --profile production --r
 - [ ] Target-based session creation functional
 - [ ] End-to-end user workflow complete
 
+## Phase 4C: Port Forward Command & smux Protocol
+
+The `port-forward` command enables TCP port forwarding through AWS SSM sessions. It supports both direct port forwarding (to a port on the target instance) and remote host forwarding (to a host reachable from the target instance, e.g., an RDS endpoint).
+
+Port forwarding uses the **smux v1 protocol** (xtaci/smux) for multiplexing TCP connections over the SSM data channel. This is required for SSM agents >= 3.0.196.0.
+
+### Architecture
+
+```text
+Local TCP Client
+    ↕ (TCP)
+PortForwardBridge (local listener)
+    ↕ (smux stream)
+SmuxSession (v1 framing)
+    ↕ (binary payloads)
+SessionDataChannel (AWS SSM WebSocket)
+    ↕ (wss://)
+AWS SSM Agent → Remote Port/Host
+```
+
+### Key Components
+
+#### PortForwardArguments (`src/pyssm_client/cli/types.py`)
+
+```python
+@dataclass
+class PortForwardArguments:
+    """CLI arguments for port-forward command."""
+
+    # Required
+    target: str
+    remote_port: int
+
+    # Optional
+    local_port: int = 0  # 0 = auto-assign
+    remote_host: Optional[str] = None  # For remote host forwarding
+
+    # AWS configuration
+    profile: Optional[str] = None
+    region: Optional[str] = None
+    endpoint_url: Optional[str] = None
+```
+
+#### PortForwardBridge (`src/pyssm_client/cli/port_forward.py`)
+
+The bridge manages:
+
+- **Local TCP listener**: Accepts incoming TCP connections on the local port
+- **smux session**: Multiplexes TCP connections as smux streams over the data channel
+- **Bidirectional proxying**: Forwards data between TCP sockets and smux streams
+- **Connection lifecycle**: Handles connect/disconnect flags from the SSM agent
+
+Flag constants used in the smux protocol:
+
+- `FLAG_CONNECT_TO_PORT = 1` — Request to open a port connection
+- `FLAG_DISCONNECT_TO_PORT = 2` — Signal to close a port connection
+- `FLAG_CONNECT_TO_PORT_ERROR = 3` — Error opening port connection
+
+#### smux v1 Protocol (`src/pyssm_client/communicator/smux.py`)
+
+Implements the xtaci/smux v1 multiplexing protocol:
+
+- **Frame format**: 8-byte header (version, cmd, length, streamID) + payload
+- **Commands**: `CMD_SYN` (open), `CMD_FIN` (close), `CMD_PSH` (data), `CMD_NOP` (keepalive)
+- **SmuxSession**: Manages stream lifecycle and frame dispatch
+- **SmuxStream**: Individual bidirectional byte stream
+
+#### Coordinator Integration (`src/pyssm_client/cli/coordinator.py`)
+
+`run_port_forward_session()` handles:
+
+- Disabling input coalescing for port forwarding
+- Creating the bridge before session execution (for proper handler registration)
+- Setting up the raw binary input handler (bypasses UTF-8 decode)
+- Signal management for graceful shutdown
+
+### SSM Documents
+
+The command automatically selects the appropriate SSM document:
+
+| Scenario                | Document                                        |
+|-------------------------|-------------------------------------------------|
+| Direct port forwarding  | `AWS-StartPortForwardingSession`                |
+| Remote host forwarding  | `AWS-StartPortForwardingSessionToRemoteHost`    |
+
+### Phase 4C Usage Examples
+
+```bash
+# Forward local port 9090 to port 8080 on the instance
+session-manager-plugin port-forward --target i-1234567890abcdef0 \
+    --remote-port 8080 --local-port 9090
+
+# Auto-assign local port, forward to port 3306 on the instance
+session-manager-plugin port-forward --target i-1234567890abcdef0 \
+    --remote-port 3306
+
+# Forward to an RDS endpoint through the instance
+session-manager-plugin port-forward --target i-1234567890abcdef0 \
+    --remote-port 3306 --remote-host mydb.cluster-xxx.us-east-1.rds.amazonaws.com
+
+# Use a specific AWS profile and region
+session-manager-plugin port-forward --target i-1234567890abcdef0 \
+    --remote-port 5432 --profile production --region us-west-2
+```
+
+### Phase 4C Success Criteria
+
+- [x] `port-forward` command with `--target`, `--remote-port`, `--local-port`, `--remote-host` options
+- [x] Automatic SSM document selection based on remote host presence
+- [x] smux v1 protocol implementation for TCP multiplexing
+- [x] PortForwardBridge with local TCP listener and bidirectional proxying
+- [x] Raw binary data path (bypasses UTF-8 decode)
+- [x] Agent version check for TCP multiplexing support (>= 3.0.196.0)
+- [x] Auto-assign local port when `--local-port` is 0
+- [x] Live tested against AWS SSM with RDS remote-host port forwarding
+- [x] 37 unit tests passing for port forwarding
+
 ## Next Phase
 
-Proceed to [Phase 5: Testing & Packaging](04_testing_packaging.md) once both Phase 4A and 4B are complete and functional.
+Proceed to [Phase 5: Testing & Packaging](04_testing_packaging.md) once Phase 4A, 4B, and 4C are complete and functional.
