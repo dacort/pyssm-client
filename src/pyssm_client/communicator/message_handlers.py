@@ -23,12 +23,16 @@ class MessageHandlerContext:
         input_handler: Optional[Callable[[bytes], None]] = None,
         stdout_handler: Optional[Callable[[bytes], None]] = None,
         stderr_handler: Optional[Callable[[bytes], None]] = None,
+        parameter_handler: Optional[Callable[[bytes, Dict[str, Any]], None]] = None,
+        flag_handler: Optional[Callable[[bytes, Dict[str, Any]], None]] = None,
     ) -> None:
         self.send_message = send_message
         self.trigger_closed = trigger_closed
         self.input_handler = input_handler
         self.stdout_handler = stdout_handler
         self.stderr_handler = stderr_handler
+        self.parameter_handler = parameter_handler
+        self.flag_handler = flag_handler
 
 
 class HandshakeHandler:
@@ -270,6 +274,24 @@ class MessageRouter:
                     message, context
                 )
                 return processed, None, False
+
+            elif message.message_type == ParsedMessageType.PORT_PARAMETER:
+                if context.parameter_handler and message.client_message:
+                    context.parameter_handler(
+                        message.client_message.payload, message.parsed_payload
+                    )
+                else:
+                    self.logger.debug("Received PORT_PARAMETER but no handler set")
+                return True, None, False
+
+            elif message.message_type == ParsedMessageType.PORT_FLAG:
+                if context.flag_handler and message.client_message:
+                    context.flag_handler(
+                        message.client_message.payload, message.parsed_payload
+                    )
+                else:
+                    self.logger.debug("Received PORT_FLAG but no handler set")
+                return True, None, False
 
             elif message.message_type == ParsedMessageType.SHELL_OUTPUT:
                 processed, new_seq = self.stream_handler.handle_shell_output(

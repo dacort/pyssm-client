@@ -152,6 +152,50 @@ class SSHArguments:
 
 
 @dataclass
+class PortForwardArguments:
+    """CLI arguments for port-forward command."""
+
+    # Required
+    target: str
+    remote_port: int
+
+    # Optional
+    local_port: int = 0  # 0 = auto-assign
+    remote_host: Optional[str] = (
+        None  # For forwarding to a remote host through the instance
+    )
+
+    # AWS configuration
+    profile: Optional[str] = None
+    region: Optional[str] = None
+    endpoint_url: Optional[str] = None
+
+    def validate(self) -> List[str]:
+        """Validate port forward arguments."""
+        errors = []
+
+        if not self.target:
+            errors.append("target is required")
+
+        if self.target and not (
+            self.target.startswith("i-")
+            or self.target.startswith("mi-")
+            or self.target.startswith("ssm-")
+        ):
+            errors.append(
+                "target must be a valid instance ID (i-*) or managed instance ID (mi-*)"
+            )
+
+        if not (1 <= self.remote_port <= 65535):
+            errors.append(f"remote_port must be 1-65535, got {self.remote_port}")
+
+        if self.local_port != 0 and not (1 <= self.local_port <= 65535):
+            errors.append(f"local_port must be 0 or 1-65535, got {self.local_port}")
+
+        return errors
+
+
+@dataclass
 class FileCopyArguments:
     """CLI arguments for scp-style file copy operations."""
 

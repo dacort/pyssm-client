@@ -19,7 +19,12 @@ from ..file_transfer.types import (
 )
 from ..utils.logging import setup_logging
 from .coordinator import SessionManagerPlugin
-from .types import ConnectArguments, SSHArguments, FileCopyArguments
+from .types import (
+    ConnectArguments,
+    SSHArguments,
+    PortForwardArguments,
+    FileCopyArguments,
+)
 
 
 # Click CLI interface with subcommands
@@ -187,6 +192,125 @@ def ssh(ctx: click.Context, **kwargs: Any) -> None:
         plugin._coalesce_mode = ctx.obj.get("coalesce_input", "auto")  # type: ignore[attr-defined]
         plugin._coalesce_delay_ms = float(ctx.obj.get("coalesce_delay_ms", 10.0))  # type: ignore[attr-defined]
         exit_code = asyncio.run(plugin.run_session(connect_args))
+        sys.exit(exit_code)
+
+    except Exception as e:
+        click.echo(f"Fatal error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command(name="port-forward")
+@click.option(
+    "--target", required=True, help="Target EC2 instance or managed instance ID"
+)
+@click.option("--remote-port", required=True, type=int, help="Port on remote host")
+@click.option(
+    "--local-port",
+    default=0,
+    type=int,
+    show_default=True,
+    help="Local port to listen on (0 for auto-assign)",
+)
+@click.option(
+    "--remote-host",
+    default=None,
+    help="Remote host to forward to through the instance (for remote host forwarding)",
+)
+@click.option("--profile", help="AWS profile")
+@click.option("--region", help="AWS region")
+@click.option("--endpoint-url", help="AWS endpoint URL")
+@click.pass_context
+def port_forward(ctx: click.Context, **kwargs: Any) -> None:
+    """
+    Forward a local port to a remote port via AWS SSM.
+
+    Opens a local TCP listener and forwards connections through an SSM session
+    to the specified port on the target instance (or a remote host reachable
+    from the target instance).
+
+    Examples:
+
+      # Forward local port 9090 to port 8080 on the instance
+      session-manager-plugin port-forward --target i-1234 --remote-port 8080 --local-port 9090
+
+      # Auto-assign local port
+      session-manager-plugin port-forward --target i-1234 --remote-port 3306
+
+      # Forward to an RDS endpoint through the instance
+      session-manager-plugin port-forward --target i-1234 --remote-port 3306 --remote-host mydb.xxx.rds.amazonaws.com
+    """
+    try:
+        filtered_kwargs = {
+            k.replace("-", "_"): v for k, v in kwargs.items() if v is not None
+        }
+        pf_args = PortForwardArguments(**filtered_kwargs)
+
+        errors = pf_args.validate()
+        if errors:
+            for error in errors:
+                click.echo(f"Validation error: {error}", err=True)
+            sys.exit(1)
+
+        # Set up AWS session
+        session_kwargs: Dict[str, str] = {}
+        if pf_args.profile:
+            session_kwargs["profile_name"] = pf_args.profile
+        if pf_args.region:
+            session_kwargs["region_name"] = pf_args.region
+
+        session = boto3.Session(**session_kwargs)  # type: ignore[arg-type]
+        ssm = session.client("ssm", endpoint_url=pf_args.endpoint_url)
+
+        # Choose document and build parameters
+        if pf_args.remote_host:
+            doc_name = "AWS-StartPortForwardingSessionToRemoteHost"
+            ssm_params: Dict[str, list[str]] = {
+                "host": [pf_args.remote_host],
+                "portNumber": [str(pf_args.remote_port)],
+                "localPortNumber": [str(pf_args.local_port)],
+            }
+        else:
+            doc_name = "AWS-StartPortForwardingSession"
+            ssm_params = {
+                "portNumber": [str(pf_args.remote_port)],
+                "localPortNumber": [str(pf_args.local_port)],
+            }
+
+        # Start SSM session
+        try:
+            click.echo(
+                f"Starting port forwarding to {pf_args.target}:{pf_args.remote_port}..."
+            )
+            response = ssm.start_session(
+                Target=pf_args.target,
+                DocumentName=doc_name,
+                Parameters=ssm_params,
+            )
+        except (BotoCoreError, ClientError) as e:
+            click.echo(f"Failed to start SSM session: {e}", err=True)
+            sys.exit(1)
+
+        session_id = response["SessionId"]
+        token_value = response["TokenValue"]
+        stream_url = response["StreamUrl"]
+
+        click.echo(f"Session started: {session_id}")
+
+        # Convert to ConnectArguments with Port session type
+        connect_args = ConnectArguments(
+            session_id=session_id,
+            stream_url=stream_url,
+            token_value=token_value,
+            target=pf_args.target,
+            session_type="Port",
+            parameters=json.dumps({"portNumber": str(pf_args.remote_port)}),
+        )
+
+        # Run port forwarding session
+        plugin = SessionManagerPlugin()
+        exit_code = asyncio.run(
+            plugin.run_port_forward_session(connect_args, pf_args.local_port)
+        )
         sys.exit(exit_code)
 
     except Exception as e:

@@ -44,6 +44,9 @@ class SessionDataChannel(IDataChannel):
         # NEW: separate stream handlers (optional)
         self._stdout_handler: Callable[[bytes], None] | None = None
         self._stderr_handler: Callable[[bytes], None] | None = None
+        # Port forwarding handlers (optional)
+        self._parameter_handler: Callable[[bytes, dict[str, Any]], None] | None = None
+        self._flag_handler: Callable[[bytes, dict[str, Any]], None] | None = None
 
         # AWS SSM protocol state tracking
         self._expected_sequence_number = 0
@@ -221,6 +224,18 @@ class SessionDataChannel(IDataChannel):
         """Set handler for stderr data from remote."""
         self._stderr_handler = handler
 
+    def set_parameter_handler(
+        self, handler: Callable[[bytes, dict[str, Any]], None]
+    ) -> None:
+        """Set handler for port forwarding PARAMETER messages."""
+        self._parameter_handler = handler
+
+    def set_flag_handler(
+        self, handler: Callable[[bytes, dict[str, Any]], None]
+    ) -> None:
+        """Set handler for port forwarding FLAG messages."""
+        self._flag_handler = handler
+
     def set_coalescing(self, enabled: bool, delay_sec: float | None = None) -> None:
         """Configure input coalescing behavior."""
         self._coalesce_enabled = enabled
@@ -252,6 +267,8 @@ class SessionDataChannel(IDataChannel):
                 input_handler=self._input_handler,
                 stdout_handler=self._stdout_handler,
                 stderr_handler=self._stderr_handler,
+                parameter_handler=self._parameter_handler,
+                flag_handler=self._flag_handler,
             )
 
             # Route to appropriate handler
@@ -488,6 +505,22 @@ class SessionDataChannel(IDataChannel):
         # Replace lone LF with CR
         data = data.replace(b"\n", b"\r")
         return data
+
+    async def send_raw_input_data(self, data: bytes) -> None:
+        """Send raw binary data without line-ending normalization or coalescing.
+
+        Used by port forwarding to relay TCP data without corruption.
+        """
+        if not self.is_open or self._channel is None:
+            raise RuntimeError("Data channel not open")
+
+        if not self._input_allowed:
+            self.logger.debug(
+                "Input paused by remote (pause_publication); dropping input"
+            )
+            return
+
+        await self._send_input_now(data)
 
     async def send_terminal_size(self, cols: int, rows: int) -> None:
         """Send terminal size update using SIZE payload type."""
