@@ -1,6 +1,6 @@
 [project]
 name = "pyssm-client"
-version = "0.1.1"
+version = "0.2.0"
 description = "Enhanced Python AWS SSM Session Manager client with interactive sessions, exec, and file transfer support"
 authors = [
     {name = "Damon Cortesi", email = "d.lifehacker@gmail.com"},
