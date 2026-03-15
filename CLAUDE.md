@@ -30,6 +30,7 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - [x] **Phase 3 implementation** ✅ - WebSocket communication complete
 - [x] **Phase 4A implementation** ✅ - Core CLI structure and connect command complete
 - [~] **Phase 4B implementation** ⚠️ - SSH command with AWS SSM integration (protocol parsing working, interactive I/O needs completion)
+- [x] **Phase 4C implementation** ✅ - Port forwarding with smux protocol complete
 - [ ] Phase 5 implementation
 
 ### Phase 1 Completed ✅
@@ -84,6 +85,17 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - **Protocol message handling** - successfully parsing `output_stream_data` messages with PayloadType=1
 - Shell prompt display working, but **interactive input/output not fully functional yet**
 
+### Phase 4C Completed ✅
+
+- `port-forward` subcommand with `--target`, `--remote-port`, `--local-port`, `--remote-host` options
+- smux v1 protocol implementation (xtaci/smux) for TCP multiplexing over SSM data channel
+- PortForwardBridge with local TCP listener and bidirectional proxying
+- Raw binary data path bypassing UTF-8 decode for data integrity
+- Automatic SSM document selection (`AWS-StartPortForwardingSession` vs `AWS-StartPortForwardingSessionToRemoteHost`)
+- Auto-assign local port when `--local-port` is 0
+- Live tested against AWS SSM with RDS remote-host port forwarding
+- 37 unit tests for port forwarding, 135 total tests passing
+
 ## Development Workflow
 
 1. Complete each phase fully before moving to the next
@@ -106,6 +118,7 @@ The implementation is divided into 5 phases with detailed documentation in `docs
 - **Real AWS Integration**: Successfully connects to AWS SSM infrastructure with proper authentication and handshaking
 - **Protocol Message Handling**: Correctly parses `output_stream_data`, `input_stream_data` with PayloadType extraction  
 - **Clean Shell Output**: Extracts shell content from AWS binary protocol (removing protocol overhead)
+- **smux v1 Port Forwarding**: TCP multiplexing over SSM data channel with PortForwardBridge, live tested with RDS remote-host forwarding
 
 ## Important Notes
 

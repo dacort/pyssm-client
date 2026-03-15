@@ -29,6 +29,8 @@ class ParsedMessageType(Enum):
     START_PUBLICATION = "start_publication"
     PAUSE_PUBLICATION = "pause_publication"
     ACKNOWLEDGE = "acknowledge"
+    PORT_PARAMETER = "port_parameter"
+    PORT_FLAG = "port_flag"
     TEXT_CONTROL = "text_control"
     UNKNOWN_BINARY = "unknown_binary"
 
@@ -130,6 +132,20 @@ class MessageParser:
                 message_type=ParsedMessageType.PAUSE_PUBLICATION,
                 client_message=client_message,
                 raw_data=message.data,
+            )
+        elif client_message.payload_type == PayloadType.PARAMETER:
+            return ParsedMessage(
+                message_type=ParsedMessageType.PORT_PARAMETER,
+                client_message=client_message,
+                raw_data=message.data,
+                parsed_payload=self._parse_json_payload(client_message.payload),
+            )
+        elif client_message.payload_type == PayloadType.FLAG:
+            return ParsedMessage(
+                message_type=ParsedMessageType.PORT_FLAG,
+                client_message=client_message,
+                raw_data=message.data,
+                parsed_payload=self._parse_json_payload(client_message.payload),
             )
         elif client_message.is_shell_output():
             return ParsedMessage(

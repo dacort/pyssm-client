@@ -4,6 +4,7 @@ Enhanced Python AWS SSM Session Manager client with interactive sessions, exec, 
 
 Highlights:
 - Interactive SSH-like sessions via SSM (`ssh` subcommand)
+- TCP port forwarding through SSM (`port-forward` subcommand)
 - Direct connect to an existing SSM data channel (`connect` subcommand)
 - Proper ack/seq handling, terminal raw mode, signal forwarding (Ctrl-C/Z/\), and periodic resize updates
 - Minimal logging by default; verbose traces with `-v`
@@ -34,6 +35,10 @@ uv add pyssm-client
 # Interactive SSH-like session
 pyssm ssh --target i-0123456789abcdef0
 
+# Port forward to a remote host through an instance
+pyssm port-forward --target i-0123456789abcdef0 --remote-port 3306 \
+    --remote-host mydb.cluster-xxx.rds.amazonaws.com
+
 # Execute single command
 pyssm exec --target i-0123456789abcdef0 --command "ls -la"
 
@@ -44,7 +49,7 @@ pyssm copy ./local-file.txt i-0123456789abcdef0:/tmp/remote-file.txt
 
 ## CLI Usage
 
-The CLI provides four subcommands: `connect`, `ssh`, `exec`, and `copy`.
+The CLI provides five subcommands: `connect`, `ssh`, `port-forward`, `exec`, and `copy`.
 
 ### `ssh`: Start an SSM session to a target
 
@@ -77,6 +82,38 @@ Behavior:
 - Periodic terminal size updates (500ms) and on resize (SIGWINCH)
 - Ctrl-C (0x03), Ctrl-\ (0x1c), Ctrl-Z (0x1a) forwarded to remote
 - `exit` cleanly closes the session and the CLI
+
+
+### `port-forward`: TCP port forwarding via SSM
+
+Forward a local TCP port to a remote port through an SSM session. Supports both direct instance port forwarding and remote host forwarding (e.g., to an RDS endpoint reachable from the target instance).
+
+```bash
+# Forward local port 9090 to port 8080 on the instance
+pyssm port-forward --target i-0123456789abcdef0 \
+    --remote-port 8080 --local-port 9090
+
+# Auto-assign local port, forward to port 3306 on the instance
+pyssm port-forward --target i-0123456789abcdef0 --remote-port 3306
+
+# Forward to an RDS endpoint through the instance
+pyssm port-forward --target i-0123456789abcdef0 \
+    --remote-port 3306 --remote-host mydb.cluster-xxx.us-east-1.rds.amazonaws.com
+```
+
+Options:
+- `--target` (required): EC2 instance ID (`i-*`) or managed instance ID (`mi-*`)
+- `--remote-port` (required): Port on the remote host to forward to
+- `--local-port` (default: 0): Local port to listen on (0 for auto-assign)
+- `--remote-host`: Remote host to forward to through the instance (enables remote host forwarding)
+- `--profile`, `--region`, `--endpoint-url`: AWS settings for `boto3`
+
+The command automatically selects the appropriate SSM document:
+
+- `AWS-StartPortForwardingSession` for direct instance port forwarding
+- `AWS-StartPortForwardingSessionToRemoteHost` when `--remote-host` is specified
+
+Port forwarding uses the smux v1 multiplexing protocol for TCP connections over the SSM data channel.
 
 
 ### `exec`: Execute a single command
@@ -327,5 +364,5 @@ This provides a solid foundation for extending functionality while maintaining c
 ## Known Limitations
 
 - KMS encryption handshake is not implemented; sessions requiring encryption will not negotiate keys.
-- Port/InteractiveCommands sessions are stubbed and not fully implemented.
+- InteractiveCommands sessions are stubbed and not fully implemented.
 

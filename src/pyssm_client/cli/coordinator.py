@@ -13,6 +13,7 @@ from ..communicator.data_channel import SessionDataChannel
 from ..communicator.utils import create_websocket_config
 from ..constants import CLIENT_VERSION
 from ..session.plugins import StandardStreamPlugin
+from ..session.plugins.port import PortSessionPlugin
 from ..session.session_handler import SessionHandler
 from ..session.types import ClientConfig, SessionConfig, SessionType
 from ..utils.logging import get_logger
@@ -107,6 +108,124 @@ class SessionManagerPlugin:
         finally:
             await self._cleanup()
 
+    async def run_port_forward_session(
+        self,
+        args: ConnectArguments,
+        local_port: int,
+        port_parameters: dict[str, str] | None = None,
+    ) -> int:
+        """Run a port forwarding session.
+
+        Args:
+            args: Connect arguments with session details (session_type must be "Port").
+            local_port: Local port to listen on (0 for auto-assign).
+            port_parameters: Port config dict sent to the agent after handshake.
+
+        Returns:
+            Exit code (0 on success).
+        """
+        from .port_forward import PortForwardBridge
+
+        try:
+            errors = args.validate()
+            if errors:
+                for error in errors:
+                    self.logger.error(f"Validation error: {error}")
+                return 1
+
+            # Create data channel (skip coalescing for port forwarding)
+            data_channel = await self._create_data_channel(args)
+            data_channel.set_coalescing(False)
+
+            # Register session plugins
+            await self._register_session_plugins()
+
+            # Create session
+            self._current_session = (
+                await self._session_handler.validate_input_and_create_session(
+                    {
+                        "sessionId": args.session_id,
+                        "streamUrl": args.stream_url,
+                        "tokenValue": args.token_value,
+                        "target": args.target,
+                        "documentName": args.document_name,
+                        "sessionType": args.session_type,
+                        "clientId": args.client_id,
+                        "parameters": args.get_parameters_dict(),
+                    }
+                )
+            )
+
+            # Set up data channel
+            try:
+                data_channel.set_client_info("pyssm-client", CLIENT_VERSION)
+            except Exception:
+                pass
+            self._current_session.set_data_channel(data_channel)
+
+            # Create and start port forwarding bridge BEFORE executing
+            # the session so handlers are registered when the SSM agent
+            # sends PARAMETER/FLAG messages during the handshake.
+            bridge = PortForwardBridge(
+                data_channel, self._shutdown_event, port_parameters
+            )
+            actual_port = await bridge.start(local_port)
+
+            # Execute session (opens WebSocket, sends handshake)
+            await self._current_session.execute()
+
+            print(
+                f"Port forwarding listening on 127.0.0.1:{actual_port}",
+                flush=True,
+            )
+
+            # Set up shutdown signal handlers (simpler than interactive session)
+            self._setup_port_forward_signal_handlers()
+
+            self.logger.debug(
+                f"Port forwarding session {args.session_id} started on port {actual_port}"
+            )
+
+            # Wait for shutdown
+            await self._shutdown_event.wait()
+
+            return 0
+
+        except KeyboardInterrupt:
+            self.logger.debug("Received interrupt signal")
+            return 130
+        except Exception as e:
+            self.logger.error(f"Port forwarding session failed: {e}", exc_info=True)
+            return 1
+        finally:
+            try:
+                if "bridge" in locals():
+                    await bridge.stop()
+            except Exception:
+                pass
+            await self._cleanup()
+
+    def _setup_port_forward_signal_handlers(self) -> None:
+        """Set up signal handlers for port forwarding (shutdown only, no TTY)."""
+        loop = asyncio.get_event_loop()
+
+        def shutdown_handler(_signum: int, _frame: Any) -> None:
+            self.logger.debug(f"Signal {_signum}: initiating shutdown")
+            loop.create_task(self._initiate_shutdown())
+
+        try:
+            if hasattr(signal, "SIGINT"):
+                loop.add_signal_handler(
+                    signal.SIGINT, shutdown_handler, signal.SIGINT, None
+                )
+            if hasattr(signal, "SIGTERM"):
+                loop.add_signal_handler(
+                    signal.SIGTERM, shutdown_handler, signal.SIGTERM, None
+                )
+        except (NotImplementedError, RuntimeError):
+            signal.signal(signal.SIGINT, shutdown_handler)
+            signal.signal(signal.SIGTERM, shutdown_handler)
+
     def _create_session_config(self, args: ConnectArguments) -> SessionConfig:
         """Create session configuration from CLI arguments."""
         return SessionConfig(
@@ -183,10 +302,9 @@ class SessionManagerPlugin:
             data_channel.set_input_handler(self._handle_remote_input)
             data_channel.set_output_handler(self._handle_remote_output)
         elif session_type == "Port":
-            # Port forwarding handlers would be different
-            self.logger.info(
-                "Port session type - specialized handlers not yet implemented"
-            )
+            # Port forwarding handlers are configured by run_port_forward_session
+            # via the PortForwardBridge; nothing to set here for the basic data path
+            self.logger.debug("Port session type - handlers configured by bridge")
         else:
             self.logger.warning(f"Unknown session type: {session_type}")
 
@@ -207,6 +325,7 @@ class SessionManagerPlugin:
         """Register session type plugins."""
         registry = self._session_handler._registry
         registry.register_plugin("Standard_Stream", StandardStreamPlugin())
+        registry.register_plugin("Port", PortSessionPlugin())
 
         self.logger.debug("Session plugins registered")
 

@@ -23,12 +23,18 @@ class MessageHandlerContext:
         input_handler: Optional[Callable[[bytes], None]] = None,
         stdout_handler: Optional[Callable[[bytes], None]] = None,
         stderr_handler: Optional[Callable[[bytes], None]] = None,
+        parameter_handler: Optional[Callable[[bytes, Dict[str, Any]], None]] = None,
+        flag_handler: Optional[Callable[[bytes, Dict[str, Any]], None]] = None,
+        raw_input_handler: Optional[Callable[[bytes], None]] = None,
     ) -> None:
         self.send_message = send_message
         self.trigger_closed = trigger_closed
         self.input_handler = input_handler
         self.stdout_handler = stdout_handler
         self.stderr_handler = stderr_handler
+        self.parameter_handler = parameter_handler
+        self.flag_handler = flag_handler
+        self.raw_input_handler = raw_input_handler
 
 
 class HandshakeHandler:
@@ -157,20 +163,25 @@ class StreamHandler:
         seq = client_message.sequence_number
 
         if seq == expected_sequence:
-            shell_data = client_message.get_shell_data()
-            if shell_data and context.input_handler:
-                context.input_handler(shell_data.encode("utf-8"))
+            # If a raw handler is set, deliver raw payload bytes directly
+            # (used by port forwarding to avoid binary data corruption).
+            if context.raw_input_handler:
+                context.raw_input_handler(client_message.payload)
+            else:
+                shell_data = client_message.get_shell_data()
+                if shell_data and context.input_handler:
+                    context.input_handler(shell_data.encode("utf-8"))
 
-            # Route to per-stream handlers
-            try:
-                if client_message.payload_type == PayloadType.OUTPUT:
-                    if context.stdout_handler:
-                        context.stdout_handler(shell_data.encode("utf-8"))
-                elif client_message.payload_type == PayloadType.STDERR:
-                    if context.stderr_handler:
-                        context.stderr_handler(shell_data.encode("utf-8"))
-            except Exception:
-                pass
+                # Route to per-stream handlers
+                try:
+                    if client_message.payload_type == PayloadType.OUTPUT:
+                        if context.stdout_handler:
+                            context.stdout_handler(shell_data.encode("utf-8"))
+                    elif client_message.payload_type == PayloadType.STDERR:
+                        if context.stderr_handler:
+                            context.stderr_handler(shell_data.encode("utf-8"))
+                except Exception:
+                    pass
 
             return True, expected_sequence + 1
         elif seq > expected_sequence:
@@ -270,6 +281,24 @@ class MessageRouter:
                     message, context
                 )
                 return processed, None, False
+
+            elif message.message_type == ParsedMessageType.PORT_PARAMETER:
+                if context.parameter_handler and message.client_message:
+                    context.parameter_handler(
+                        message.client_message.payload, message.parsed_payload
+                    )
+                else:
+                    self.logger.debug("Received PORT_PARAMETER but no handler set")
+                return True, None, False
+
+            elif message.message_type == ParsedMessageType.PORT_FLAG:
+                if context.flag_handler and message.client_message:
+                    context.flag_handler(
+                        message.client_message.payload, message.parsed_payload
+                    )
+                else:
+                    self.logger.debug("Received PORT_FLAG but no handler set")
+                return True, None, False
 
             elif message.message_type == ParsedMessageType.SHELL_OUTPUT:
                 processed, new_seq = self.stream_handler.handle_shell_output(
