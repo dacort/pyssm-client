@@ -134,9 +134,7 @@ class PortForwardBridge:
 
         self._logger.debug(f"Port flag received: {flag_value}")
         if flag_value == FLAG_CONNECT_TO_PORT_ERROR:
-            self._logger.error(
-                "Agent reported: connection to destination port failed"
-            )
+            self._logger.error("Agent reported: connection to destination port failed")
 
     # -- smux send helper --
 
@@ -173,12 +171,8 @@ class PortForwardBridge:
         self._logger.debug(f"Opened smux stream {stream.stream_id} for {peer}")
 
         # Run bidirectional proxy: TCP <-> smux stream
-        tcp_to_smux = asyncio.create_task(
-            self._proxy_tcp_to_smux(reader, stream, peer)
-        )
-        smux_to_tcp = asyncio.create_task(
-            self._proxy_smux_to_tcp(stream, writer, peer)
-        )
+        tcp_to_smux = asyncio.create_task(self._proxy_tcp_to_smux(reader, stream, peer))
+        smux_to_tcp = asyncio.create_task(self._proxy_smux_to_tcp(stream, writer, peer))
 
         try:
             # Wait for either direction to finish

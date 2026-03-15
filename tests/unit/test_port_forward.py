@@ -12,7 +12,6 @@ import pytest
 
 from pyssm_client.cli.port_forward import (
     FLAG_CONNECT_TO_PORT,
-    FLAG_DISCONNECT_TO_PORT,
     FLAG_CONNECT_TO_PORT_ERROR,
     PortForwardBridge,
 )
@@ -29,7 +28,6 @@ from pyssm_client.communicator.message_parser import (
 from pyssm_client.communicator.protocol import serialize_client_message
 from pyssm_client.communicator.smux import (
     SmuxSession,
-    SmuxStream,
     _pack_header,
     _unpack_header,
     CMD_SYN,

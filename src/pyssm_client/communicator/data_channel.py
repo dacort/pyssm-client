@@ -356,9 +356,7 @@ class SessionDataChannel(IDataChannel):
                     elif seq > self._expected_sequence_number:
                         # Out-of-order message; buffer it
                         if parsed_message.raw_data:
-                            self._incoming_buffer[seq] = (
-                                parsed_message.raw_data
-                            )
+                            self._incoming_buffer[seq] = parsed_message.raw_data
                         self.logger.debug(
                             f"Buffered future sequence {client_message.sequence_number}, expected {self._expected_sequence_number}"
                         )
